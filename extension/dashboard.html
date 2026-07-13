@@ -84,7 +84,7 @@
         </div>
       </div>
       <div class="panel form-panel stack">
-        <label>Upload a PDF <span class="small">(extracts text — review before saving)</span>
+        <label>Upload a PDF <span class="small">(flags scanned/image PDFs; review text before saving)</span>
           <input id="resumePdfInput" type="file" accept="application/pdf">
         </label>
         <div id="resumePdfStatus" class="status-line" aria-live="polite"></div>
@@ -183,23 +183,6 @@
         <div class="form-actions">
           <button id="savePreferences" class="primary" type="button">Save Preferences</button>
           <div id="preferencesStatus" class="status-line" aria-live="polite"></div>
-        </div>
-      </div>
-      <div class="panel form-panel stack">
-        <h3>Generation</h3>
-        <label>Provider
-          <select id="provider">
-            <option value="anthropic">Anthropic</option>
-            <option value="openai">OpenAI</option>
-            <option value="gemini">Gemini</option>
-          </select>
-        </label>
-        <label>Model
-          <input id="model" placeholder="claude-opus-4-8">
-        </label>
-        <div class="form-actions">
-          <button id="saveSettings" class="primary" type="button">Save Settings</button>
-          <div id="settingsStatus" class="status-line" aria-live="polite"></div>
         </div>
       </div>
     </section>

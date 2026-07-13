@@ -1,10 +1,11 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
+import { analyzePdfAtsReadiness } from "./pdf-check.js";
 
-// Always uses Anthropic regardless of the user's tailoring provider preference —
-// this is a one-time, low-volume utility call (once per resume upload, not per
-// job), so it doesn't need the same provider-agnostic treatment as `tailor`.
+// TODO: Replace AI extraction with parser-first text extraction for PDFs with a
+// real text layer. AI must never be used to paper over scanned/OCR-dependent
+// resumes, because those PDFs are poor ATS inputs.
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
 // ~11MB decoded (base64 is ~4/3 the size of the raw bytes) — comfortably under
@@ -16,19 +17,32 @@ const MAX_PDF_BASE64_CHARS = 15_000_000;
 // request (it spends the operator's Anthropic budget).
 export default {
   fetch: withSupabase({ auth: "user" }, async (req) => {
-    if (!ANTHROPIC_API_KEY) {
-      return Response.json(
-        { error: "PDF extraction isn't configured on this server (missing ANTHROPIC_API_KEY secret)." },
-        { status: 503 },
-      );
-    }
-
     const { pdf_base64 } = await req.json();
     if (!pdf_base64 || typeof pdf_base64 !== "string") {
       return Response.json({ error: "pdf_base64 is required" }, { status: 400 });
     }
     if (pdf_base64.length > MAX_PDF_BASE64_CHARS) {
       return Response.json({ error: "PDF is too large." }, { status: 400 });
+    }
+
+    const atsReadiness = analyzePdfAtsReadiness(pdf_base64);
+    if (atsReadiness.status === "blocked") {
+      return Response.json(
+        {
+          code: "ocr_pdf_not_ats_safe",
+          error:
+            "This PDF appears to be scanned, image-only, or OCR-dependent. It is unlikely to survive ATS parsing. Export a text-based PDF from your resume editor or paste the verified resume text instead.",
+          ats_readiness: atsReadiness,
+        },
+        { status: atsReadiness.issues.some((issue: string) => issue.includes("not a valid PDF")) ? 400 : 422 },
+      );
+    }
+
+    if (!ANTHROPIC_API_KEY) {
+      return Response.json(
+        { error: "PDF extraction isn't configured on this server (missing ANTHROPIC_API_KEY secret)." },
+        { status: 503 },
+      );
     }
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -70,7 +84,7 @@ export default {
       return Response.json({ error: "Could not extract any text from that PDF." }, { status: 422 });
     }
 
-    return Response.json({ raw_text: textBlock.text });
+    return Response.json({ raw_text: textBlock.text, ats_readiness: atsReadiness });
   }),
 };
 

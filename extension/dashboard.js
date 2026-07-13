@@ -47,8 +47,6 @@ import { buildCoachingPlan, weekStart } from '../src/coaching-utils.js';
 import { createDocx } from '../src/docx-utils.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
-// Cheapest/lightest model per provider — a cost-conscious default, not a capability pick.
-const DEFAULT_MODEL = { anthropic: 'claude-haiku-4-5', openai: 'gpt-4o-mini', gemini: 'gemini-2.5-flash' };
 const $ = (id) => document.getElementById(id);
 
 let session = null;
@@ -917,8 +915,7 @@ async function renderJobDetail(editing = false) {
     tailorBtn.disabled = true;
     setStatusElement(tailorStatus, 'Generating...');
     try {
-      const { settings } = await getStorage('settings');
-      await tailorJob(session.accessToken, job.id, settings || {});
+      await tailorJob(session.accessToken, job.id);
       setStatusElement(tailorStatus, 'Done.', 'success');
       await renderJobDetail();
     } catch (err) {
@@ -1271,10 +1268,15 @@ $('resumePdfInput').addEventListener('change', async (e) => {
   setStatus('resumePdfStatus', 'Extracting text from PDF...');
   try {
     const base64 = await readFileAsBase64(file);
-    const rawText = await extractResumeFromPdf(session.accessToken, base64);
+    const { rawText, atsReadiness } = await extractResumeFromPdf(session.accessToken, base64);
     $('resumeText').value = rawText;
     renderHealthCheck(rawText);
-    setStatus('resumePdfStatus', 'Extracted — review below, then click Save Resume.', 'success');
+    const warning = atsReadiness?.warnings?.[0];
+    setStatus(
+      'resumePdfStatus',
+      warning ? `${warning} Review the extracted text below before saving.` : 'Extracted. Review below, then click Save Resume.',
+      warning ? 'error' : 'success',
+    );
   } catch (err) {
     setStatus('resumePdfStatus', `Error: ${err.message}`, 'error');
   } finally {
@@ -1297,7 +1299,7 @@ $('saveResume').addEventListener('click', async () => {
   }
 });
 
-// ---- Settings (provider/model preference only; API keys live server-side now) ----
+// ---- Settings ----
 function csvValues(value) {
   return value.split(',').map((item) => item.trim()).filter(Boolean);
 }
@@ -1345,26 +1347,6 @@ $('savePreferences').addEventListener('click', async () => {
   }
 });
 
-async function loadSettings() {
-  const { settings } = await getStorage('settings');
-  $('provider').value = settings?.provider || 'anthropic';
-  $('model').value = settings?.model || DEFAULT_MODEL[settings?.provider || 'anthropic'];
-}
-
-$('provider').addEventListener('change', () => {
-  const current = $('model').value.trim();
-  const currentIsDefault = Object.values(DEFAULT_MODEL).includes(current);
-  if (!current || currentIsDefault) $('model').value = DEFAULT_MODEL[$('provider').value];
-});
-
-$('saveSettings').addEventListener('click', async () => {
-  await setStorage({
-    settings: { provider: $('provider').value, model: $('model').value.trim() || DEFAULT_MODEL[$('provider').value] },
-  });
-  setStatus('settingsStatus', 'Saved.', 'success');
-  setTimeout(() => setStatus('settingsStatus', ''), 1500);
-});
-
 // ---- Init / auth gate ----
 async function init() {
   const { session: stored } = await getStorage('session');
@@ -1388,7 +1370,6 @@ async function init() {
   renderDiscovery();
   loadResume();
   loadPreferences();
-  loadSettings();
   await loadInterview();
   await renderCoach();
 }

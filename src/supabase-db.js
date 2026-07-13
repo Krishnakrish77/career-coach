@@ -434,22 +434,21 @@ export async function listJobArtifacts(accessToken, jobId, fetchImpl = fetch) {
   );
 }
 
-// Calls the `tailor` Edge Function, which runs the LLM call server-side with
-// the operator's key and writes the result onto the applications row.
-export async function tailorJob(accessToken, jobId, { provider, model } = {}, fetchImpl = fetch) {
+// Calls the `tailor` Edge Function, which chooses the hosted provider/model
+// server-side and writes the result onto the applications row.
+export async function tailorJob(accessToken, jobId, fetchImpl = fetch) {
   const res = await fetchImpl(`${SUPABASE_URL}/functions/v1/tailor`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
-    body: JSON.stringify({ job_id: jobId, provider, model }),
+    body: JSON.stringify({ job_id: jobId }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Tailor error ${res.status}`);
   return data;
 }
 
-// Calls the `extract-resume` Edge Function (PDF -> plain text via Anthropic,
-// regardless of the user's tailoring provider preference — see the function's
-// own comment for why). pdfBase64 should be the raw base64 payload, no
+// Calls the `extract-resume` Edge Function (PDF -> plain text via Anthropic).
+// pdfBase64 should be the raw base64 payload, no
 // "data:application/pdf;base64," prefix.
 export async function extractResumeFromPdf(accessToken, pdfBase64, fetchImpl = fetch) {
   const res = await fetchImpl(`${SUPABASE_URL}/functions/v1/extract-resume`, {
@@ -459,5 +458,5 @@ export async function extractResumeFromPdf(accessToken, pdfBase64, fetchImpl = f
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Extract error ${res.status}`);
-  return data.raw_text;
+  return { rawText: data.raw_text, atsReadiness: data.ats_readiness || null };
 }
