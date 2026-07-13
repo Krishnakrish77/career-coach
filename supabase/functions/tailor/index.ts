@@ -99,6 +99,22 @@ const DEFAULT_MODEL: Record<string, string> = {
   gemini: "gemini-2.5-pro",
 };
 
+// The client sends a model *preference*, but it must resolve to something on
+// this list — otherwise any signed-in user could pass an arbitrary model
+// string (including expensive ones) and the operator's key pays for it.
+const ALLOWED_MODELS: Record<string, string[]> = {
+  anthropic: ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
+  openai: ["gpt-4o", "gpt-4o-mini"],
+  gemini: ["gemini-2.5-pro", "gemini-2.5-flash"],
+};
+
+// Cheap abuse guards that don't need any new infrastructure — both are backed
+// by a single column (applications.last_tailored_at) rather than a separate
+// rate-limit service.
+const REPEAT_TAILOR_DEBOUNCE_SECONDS = 15; // reject rapid re-clicks on the same job
+const MAX_TAILOR_CALLS_PER_HOUR = 20; // per user, across all jobs
+const MAX_INPUT_CHARS = 20000; // defense in depth — the client already truncates jd_text
+
 // auth: "user" requires a valid caller JWT. ctx.supabase is then scoped to
 // that user, so every query below is subject to RLS automatically — no
 // manual user_id filtering needed, and no risk of leaking another user's row.
@@ -111,6 +127,10 @@ export default {
     if (!["anthropic", "openai", "gemini"].includes(provider)) {
       return Response.json({ error: `Unknown provider: ${provider}` }, { status: 400 });
     }
+    const resolvedModel = model || DEFAULT_MODEL[provider];
+    if (!ALLOWED_MODELS[provider].includes(resolvedModel)) {
+      return Response.json({ error: `Model not allowed for ${provider}: ${resolvedModel}` }, { status: 400 });
+    }
 
     const { data: job, error: jobError } = await ctx.supabase
       .from("jobs")
@@ -119,6 +139,32 @@ export default {
       .single();
     if (jobError || !job) {
       return Response.json({ error: "Job not found or not accessible" }, { status: 404 });
+    }
+
+    // Per-job debounce — RLS already scopes this to the caller's own row.
+    const { data: existingApplication } = await ctx.supabase
+      .from("applications")
+      .select("last_tailored_at")
+      .eq("job_id", job_id)
+      .maybeSingle();
+    if (existingApplication?.last_tailored_at) {
+      const secondsSinceLastTailor = (Date.now() - new Date(existingApplication.last_tailored_at).getTime()) / 1000;
+      if (secondsSinceLastTailor < REPEAT_TAILOR_DEBOUNCE_SECONDS) {
+        return Response.json(
+          { error: `This job was just tailored — wait ${Math.ceil(REPEAT_TAILOR_DEBOUNCE_SECONDS - secondsSinceLastTailor)}s before retrying.` },
+          { status: 429 },
+        );
+      }
+    }
+
+    // Per-user hourly cap, across all jobs — RLS scopes the count to the caller.
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: recentTailorCount } = await ctx.supabase
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .gte("last_tailored_at", oneHourAgo);
+    if ((recentTailorCount ?? 0) >= MAX_TAILOR_CALLS_PER_HOUR) {
+      return Response.json({ error: "Hourly tailoring limit reached. Try again later." }, { status: 429 });
     }
 
     const { data: resume, error: resumeError } = await ctx.supabase
@@ -141,9 +187,8 @@ export default {
       "You are a career coach. Given a resume and a job posting, produce a tailored resume " +
       "(rewritten bullets emphasizing relevant experience) and a concise cover letter.";
     const userPrompt =
-      `RESUME:\n${resume.raw_text}\n\n` +
-      `JOB POSTING (raw page text, may include nav/boilerplate — ignore that):\n${job.jd_text ?? ""}`;
-    const resolvedModel = model || DEFAULT_MODEL[provider];
+      `RESUME:\n${resume.raw_text.slice(0, MAX_INPUT_CHARS)}\n\n` +
+      `JOB POSTING (raw page text, may include nav/boilerplate — ignore that):\n${(job.jd_text ?? "").slice(0, MAX_INPUT_CHARS)}`;
 
     const CALL_BY_PROVIDER: Record<string, typeof callAnthropic> = {
       anthropic: callAnthropic,
@@ -165,6 +210,7 @@ export default {
           job_id,
           tailored_resume: parsed.tailored_resume,
           cover_letter: parsed.cover_letter,
+          last_tailored_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id,job_id" },

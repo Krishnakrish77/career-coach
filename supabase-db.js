@@ -15,11 +15,24 @@ async function restRequest(path, accessToken, { method = 'GET', body, extraHeade
   return res.status === 204 ? null : res.json();
 }
 
-// jobs joined with the caller's own applications row (RLS scopes the nested
-// select automatically — a shared-pool job with someone else's application
-// row never leaks through this join).
+// Light projection for list rendering — no jd_text/tailored_resume/cover_letter,
+// since those aren't needed until a specific job is opened (see getJob below).
+// limit=100 is a sane ceiling for personal-scale use today; add real
+// pagination if usage grows past it rather than raising this silently.
 export async function listJobs(accessToken, fetchImpl = fetch) {
-  return restRequest('jobs?select=*,applications(*)&order=created_at.desc', accessToken, {}, fetchImpl);
+  return restRequest(
+    'jobs?select=id,url,title,company,created_at,applications(status)&order=created_at.desc&limit=100',
+    accessToken,
+    {},
+    fetchImpl,
+  );
+}
+
+// Full row (including jd_text/tailored_resume/cover_letter) for one job —
+// used by the detail view instead of re-fetching and re-scanning the whole list.
+export async function getJob(accessToken, jobId, fetchImpl = fetch) {
+  const rows = await restRequest(`jobs?id=eq.${jobId}&select=*,applications(*)`, accessToken, {}, fetchImpl);
+  return rows[0] || null;
 }
 
 // Creates the job row, then its paired applications row (status defaults to

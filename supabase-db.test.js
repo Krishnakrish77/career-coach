@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   listJobs,
+  getJob,
   insertJob,
   updateApplicationStatus,
   deleteJob,
@@ -25,13 +26,29 @@ function fetchSequence(responses) {
   return { fetchImpl, calls };
 }
 
-test('listJobs requests jobs joined with applications, newest first', async () => {
+test('listJobs requests a light column set, capped, newest first', async () => {
   const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: '1' }] })]);
   const result = await listJobs('token-1', fetchImpl);
   assert.deepEqual(result, [{ id: '1' }]);
-  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/jobs?select=*,applications(*)&order=created_at.desc`);
+  assert.equal(
+    calls[0].url,
+    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,created_at,applications(status)&order=created_at.desc&limit=100`,
+  );
   assert.equal(calls[0].opts.headers.apikey, SUPABASE_ANON_KEY);
   assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');
+});
+
+test('getJob requests one job by id with the full row', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'job-1', jd_text: 'full text' }] })]);
+  const result = await getJob('token-1', 'job-1', fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/jobs?id=eq.job-1&select=*,applications(*)`);
+  assert.equal(result.jd_text, 'full text');
+});
+
+test('getJob returns null when the job does not exist or is not accessible', async () => {
+  const { fetchImpl } = fetchSequence([fakeResponse({ json: [] })]);
+  const result = await getJob('token-1', 'missing', fetchImpl);
+  assert.equal(result, null);
 });
 
 test('insertJob creates the job then its paired applications row', async () => {

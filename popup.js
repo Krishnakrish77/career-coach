@@ -53,39 +53,63 @@ $('signOut').addEventListener('click', async () => {
 });
 
 // ---- Recent captures (read-only preview; full list lives in the dashboard) ----
+// job.title comes from the captured tab's <title> — arbitrary, untrusted web
+// content — so every dynamic field here is set via textContent/dataset, never
+// interpolated into innerHTML.
 async function renderRecentJobs() {
   const jobs = await listJobs(session.accessToken);
   const list = $('recentJobs');
   list.innerHTML = '';
   for (const job of jobs.slice(0, 3)) {
     const status = (job.applications && job.applications[0]?.status) || 'saved';
-    const el = document.createElement('div');
-    el.className = 'card';
-    el.style.padding = '6px 8px';
-    el.innerHTML = `
-      <div class="small" style="color: var(--text);">${job.title || job.url}</div>
-      <span class="pill" data-status="${status}">${status}</span>
-    `;
-    list.appendChild(el);
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.padding = '6px 8px';
+
+    const title = document.createElement('div');
+    title.className = 'small';
+    title.style.color = 'var(--text)';
+    title.textContent = job.title || job.url;
+
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.dataset.status = status;
+    pill.textContent = status;
+
+    card.append(title, pill);
+    list.appendChild(card);
   }
 }
 
 $('captureJob').addEventListener('click', async () => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab) return;
-  const [{ result: pageText }] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: () => document.body.innerText,
-  });
-  await insertJob(session.accessToken, {
-    url: tab.url,
-    title: tab.title,
-    company: null,
-    jd_text: pageText.slice(0, 12000),
-  });
-  renderRecentJobs();
-  $('captureStatus').textContent = 'Saved — open the dashboard to tailor it.';
-  setTimeout(() => ($('captureStatus').textContent = ''), 2500);
+  const btn = $('captureJob');
+  btn.disabled = true;
+  $('captureStatus').textContent = 'Saving…';
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) {
+      $('captureStatus').textContent = 'No active tab found.';
+      return;
+    }
+    const [{ result: pageText }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => document.body.innerText,
+    });
+    await insertJob(session.accessToken, {
+      url: tab.url,
+      title: tab.title,
+      company: null,
+      jd_text: pageText.slice(0, 12000),
+    });
+    await renderRecentJobs();
+    $('captureStatus').textContent = 'Saved — open the dashboard to tailor it.';
+    setTimeout(() => ($('captureStatus').textContent = ''), 2500);
+  } catch (err) {
+    $('captureStatus').textContent = `Error: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 $('openDashboard').addEventListener('click', () => {

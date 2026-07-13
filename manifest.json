@@ -2,13 +2,12 @@
   "manifest_version": 3,
   "name": "Career Coach",
   "version": "0.1.0",
-  "description": "Capture job postings, tailor your resume/cover letter, and track applications. Bring your own LLM API key.",
+  "description": "Capture job postings, tailor your resume/cover letter, and track applications.",
   "action": {
     "default_popup": "popup.html"
   },
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [
-    "https://api.anthropic.com/*",
-    "https://api.openai.com/*"
+    "https://tcteyjqttubktygdzmbp.supabase.co/*"
   ]
 }

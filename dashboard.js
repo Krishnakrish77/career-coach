@@ -1,6 +1,6 @@
 import { getValidSession } from './supabase-auth.js';
 import { getStorage, setStorage } from './storage.js';
-import { listJobs, updateApplicationStatus, deleteJob, saveResume, getLatestResume, tailorJob } from './supabase-db.js';
+import { listJobs, getJob, updateApplicationStatus, deleteJob, saveResume, getLatestResume, tailorJob } from './supabase-db.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 const DEFAULT_MODEL = { anthropic: 'claude-opus-4-8', openai: 'gpt-4o', gemini: 'gemini-2.5-pro' };
@@ -25,100 +25,204 @@ document.querySelectorAll('.tab').forEach((tab) => {
 });
 
 // ---- Jobs ----
-function badgeHtml(job) {
-  // overallGrade doesn't exist yet (scoring isn't wired up) — render nothing
-  // until that data shows up on the job row, rather than fake a value.
-  if (!job.overall_grade) return '';
-  return `<span class="badge" data-grade="${job.overall_grade}">${job.overall_grade}</span>`;
+// Every field below can originate from an arbitrary webpage (job.title/company,
+// via the captured tab) or from LLM output (tailored_resume/cover_letter), so
+// nothing here goes through innerHTML — DOM nodes + textContent/.value only.
+// job.url is validated to http(s) before ever becoming a real <a href>.
+function emptyState(text) {
+  const el = document.createElement('div');
+  el.className = 'empty-state';
+  el.textContent = text;
+  return el;
+}
+
+function safeHttpUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null;
+  } catch {
+    return null;
+  }
 }
 
 async function renderJobList() {
-  const jobs = await listJobs(session.accessToken);
-  const filtered = statusFilter === 'all' ? jobs : jobs.filter((j) => applicationOf(j).status === statusFilter);
   const list = $('jobList');
+  list.innerHTML = '';
+  list.appendChild(emptyState('Loading…'));
+
+  let jobs;
+  try {
+    jobs = await listJobs(session.accessToken);
+  } catch (err) {
+    list.innerHTML = '';
+    list.appendChild(emptyState(`Couldn't load jobs: ${err.message}`));
+    return;
+  }
+
+  const filtered = statusFilter === 'all' ? jobs : jobs.filter((j) => applicationOf(j).status === statusFilter);
   list.innerHTML = '';
 
   if (filtered.length === 0) {
-    list.innerHTML = `<div class="empty-state">No jobs${statusFilter === 'all' ? ' yet — capture one from the extension popup.' : ' with this status.'}</div>`;
+    list.appendChild(
+      emptyState(statusFilter === 'all' ? 'No jobs yet — capture one from the extension popup.' : 'No jobs with this status.'),
+    );
     return;
   }
 
   for (const job of filtered) {
     const application = applicationOf(job);
-    const el = document.createElement('div');
-    el.className = 'card job-card' + (job.id === selectedJobId ? ' selected' : '');
-    el.innerHTML = `
-      <h3>${job.title || job.url} ${badgeHtml(job)}</h3>
-      <div class="small">${job.company || ''}</div>
-      <span class="pill" data-status="${application.status}">${application.status}</span>
-    `;
-    el.addEventListener('click', () => {
+    const card = document.createElement('div');
+    card.className = 'card job-card' + (job.id === selectedJobId ? ' selected' : '');
+
+    const h3 = document.createElement('h3');
+    h3.textContent = job.title || job.url;
+
+    const company = document.createElement('div');
+    company.className = 'small';
+    company.textContent = job.company || '';
+
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.dataset.status = application.status;
+    pill.textContent = application.status;
+
+    card.append(h3, company, pill);
+    card.addEventListener('click', () => {
       selectedJobId = job.id;
       renderJobList();
       renderJobDetail();
     });
-    list.appendChild(el);
+    list.appendChild(card);
   }
 }
 
 async function renderJobDetail() {
   const detail = $('jobDetail');
   if (!selectedJobId) {
-    detail.innerHTML = `<div class="empty-state">Select a job from the list, or capture one from the extension popup.</div>`;
+    detail.innerHTML = '';
+    detail.appendChild(emptyState('Select a job from the list, or capture one from the extension popup.'));
     return;
   }
 
-  const jobs = await listJobs(session.accessToken);
-  const job = jobs.find((j) => j.id === selectedJobId);
+  detail.innerHTML = '';
+  detail.appendChild(emptyState('Loading…'));
+
+  let job;
+  try {
+    job = await getJob(session.accessToken, selectedJobId);
+  } catch (err) {
+    detail.innerHTML = '';
+    detail.appendChild(emptyState(`Couldn't load this job: ${err.message}`));
+    return;
+  }
   if (!job) {
     selectedJobId = null;
     return renderJobDetail();
   }
   const application = applicationOf(job);
 
-  detail.innerHTML = `
-    <div class="card stack">
-      <div class="row">
-        <h2><a href="${job.url}" target="_blank" rel="noopener">${job.title || job.url}</a></h2>
-        <select id="detailStatus" style="max-width: 160px;">
-          ${STATUSES.map((s) => `<option value="${s}" ${s === application.status ? 'selected' : ''}>${s}</option>`).join('')}
-        </select>
-      </div>
-      <div class="small">Captured ${new Date(job.created_at).toLocaleString()}</div>
-      <div class="jd-text">${job.jd_text || ''}</div>
-      <div class="row">
-        <button id="detailTailor" class="primary">${application.tailored_resume ? 'Re-tailor' : 'Tailor resume + cover letter'}</button>
-        <button id="detailDelete" class="danger">Delete</button>
-      </div>
-      <div id="detailTailorStatus" class="small"></div>
-      <textarea id="detailOutput" readonly style="${application.tailored_resume ? '' : 'display:none'}">${
-        application.tailored_resume ? `TAILORED RESUME\n\n${application.tailored_resume}\n\nCOVER LETTER\n\n${application.cover_letter}` : ''
-      }</textarea>
-    </div>
-  `;
+  const card = document.createElement('div');
+  card.className = 'card stack';
 
-  $('detailStatus').addEventListener('change', async (e) => {
-    await updateApplicationStatus(session.accessToken, job.id, e.target.value);
-    renderJobList();
+  const headerRow = document.createElement('div');
+  headerRow.className = 'row';
+  const h2 = document.createElement('h2');
+  const safeUrl = safeHttpUrl(job.url);
+  if (safeUrl) {
+    const link = document.createElement('a');
+    link.href = safeUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = job.title || job.url;
+    h2.appendChild(link);
+  } else {
+    h2.textContent = job.title || job.url;
+  }
+  const statusSelect = document.createElement('select');
+  statusSelect.id = 'detailStatus';
+  statusSelect.style.maxWidth = '160px';
+  for (const s of STATUSES) {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    opt.selected = s === application.status;
+    statusSelect.appendChild(opt);
+  }
+  headerRow.append(h2, statusSelect);
+
+  const captured = document.createElement('div');
+  captured.className = 'small';
+  captured.textContent = `Captured ${new Date(job.created_at).toLocaleString()}`;
+
+  const jdText = document.createElement('div');
+  jdText.className = 'jd-text';
+  jdText.textContent = job.jd_text || '';
+
+  const actionsRow = document.createElement('div');
+  actionsRow.className = 'row';
+  const tailorBtn = document.createElement('button');
+  tailorBtn.id = 'detailTailor';
+  tailorBtn.className = 'primary';
+  tailorBtn.textContent = application.tailored_resume ? 'Re-tailor' : 'Tailor resume + cover letter';
+  const deleteBtn = document.createElement('button');
+  deleteBtn.id = 'detailDelete';
+  deleteBtn.className = 'danger';
+  deleteBtn.textContent = 'Delete';
+  actionsRow.append(tailorBtn, deleteBtn);
+
+  const tailorStatus = document.createElement('div');
+  tailorStatus.id = 'detailTailorStatus';
+  tailorStatus.className = 'small';
+
+  const output = document.createElement('textarea');
+  output.id = 'detailOutput';
+  output.readOnly = true;
+  output.style.display = application.tailored_resume ? '' : 'none';
+  output.value = application.tailored_resume
+    ? `TAILORED RESUME\n\n${application.tailored_resume}\n\nCOVER LETTER\n\n${application.cover_letter}`
+    : '';
+
+  card.append(headerRow, captured, jdText, actionsRow, tailorStatus, output);
+  detail.appendChild(card);
+
+  statusSelect.addEventListener('change', async (e) => {
+    const previous = application.status;
+    statusSelect.disabled = true;
+    try {
+      await updateApplicationStatus(session.accessToken, job.id, e.target.value);
+      renderJobList();
+    } catch (err) {
+      tailorStatus.textContent = `Error: ${err.message}`;
+      statusSelect.value = previous;
+    } finally {
+      statusSelect.disabled = false;
+    }
   });
 
-  $('detailDelete').addEventListener('click', async () => {
-    await deleteJob(session.accessToken, job.id);
-    selectedJobId = null;
-    renderJobList();
-    renderJobDetail();
+  deleteBtn.addEventListener('click', async () => {
+    deleteBtn.disabled = true;
+    try {
+      await deleteJob(session.accessToken, job.id);
+      selectedJobId = null;
+      renderJobList();
+      renderJobDetail();
+    } catch (err) {
+      tailorStatus.textContent = `Error: ${err.message}`;
+      deleteBtn.disabled = false;
+    }
   });
 
-  $('detailTailor').addEventListener('click', async () => {
-    const statusEl = $('detailTailorStatus');
-    statusEl.textContent = 'Generating…';
+  tailorBtn.addEventListener('click', async () => {
+    tailorBtn.disabled = true;
+    tailorStatus.textContent = 'Generating…';
     try {
       const { settings } = await getStorage('settings');
       await tailorJob(session.accessToken, job.id, settings || {});
-      statusEl.textContent = 'Done.';
+      tailorStatus.textContent = 'Done.';
       renderJobDetail();
     } catch (err) {
-      statusEl.textContent = `Error: ${err.message}`;
+      tailorStatus.textContent = `Error: ${err.message}`;
+      tailorBtn.disabled = false;
     }
   });
 }
@@ -137,9 +241,18 @@ async function loadResume() {
   $('resumeText').value = resume ? resume.raw_text : '';
 }
 $('saveResume').addEventListener('click', async () => {
-  await saveResume(session.accessToken, $('resumeText').value);
-  $('resumeStatus').textContent = 'Saved.';
-  setTimeout(() => ($('resumeStatus').textContent = ''), 1500);
+  const btn = $('saveResume');
+  btn.disabled = true;
+  $('resumeStatus').textContent = 'Saving…';
+  try {
+    await saveResume(session.accessToken, $('resumeText').value);
+    $('resumeStatus').textContent = 'Saved.';
+    setTimeout(() => ($('resumeStatus').textContent = ''), 1500);
+  } catch (err) {
+    $('resumeStatus').textContent = `Error: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // ---- Settings (provider/model preference only — API keys live server-side now) ----
