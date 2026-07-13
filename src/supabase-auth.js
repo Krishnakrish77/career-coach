@@ -1,5 +1,9 @@
 export const SUPABASE_URL = 'https://tcteyjqttubktygdzmbp.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_2JpXxZ6eTRP5l_hTKP72Sg_AfGTGDWI';
+// Where GoTrue's recovery/invite email links redirect to — the extension has
+// no web app of its own, so this static page is the landing spot that reads
+// the token from the URL and lets the user set a password.
+export const AUTH_LANDING_URL = 'https://krishnakrish77.github.io/career-coach/auth.html';
 
 async function authRequest(path, body, fetchImpl) {
   const res = await fetchImpl(`${SUPABASE_URL}/auth/v1/${path}`, {
@@ -34,6 +38,13 @@ export async function signUp(email, password, fetchImpl = fetch) {
 
 export async function signIn(email, password, fetchImpl = fetch) {
   return toStoredSession(await authRequest('token?grant_type=password', { email, password }, fetchImpl));
+}
+
+// GoTrue returns 200 with an empty body whether or not the email exists, by
+// design, to avoid leaking which emails are registered — so there's nothing
+// meaningful to return here beyond "the request was accepted."
+export async function requestPasswordReset(email, fetchImpl = fetch) {
+  await authRequest(`recover?redirect_to=${encodeURIComponent(AUTH_LANDING_URL)}`, { email }, fetchImpl);
 }
 
 export async function refreshSession(refreshToken, fetchImpl = fetch) {

@@ -93,19 +93,25 @@ supabase/config.toml          Local Supabase project config (synced to the live 
    ```
    (`--use-api` bundles server-side without needing Docker running locally.)
 
-6. **Point the extension at your project.** Two places hardcode the project reference today (this is a single-deployment personal project, not yet parameterized for forks):
+6. **Point the extension and auth redirects at your project.** These values are hardcoded today (this is a single-deployment personal project, not yet parameterized for forks):
    - `src/supabase-auth.js` — `SUPABASE_URL` and `SUPABASE_ANON_KEY` (the **publishable** key — safe to embed client-side, RLS is the actual security boundary)
+   - `src/supabase-auth.js` — `AUTH_LANDING_URL`, the public URL for `docs/auth.html` after you publish the docs site
    - `manifest.json` — `host_permissions` must list your project's `https://<ref>.supabase.co/*`
+   - `supabase/config.toml` — `[auth].site_url` and `additional_redirect_urls` must include the same `AUTH_LANDING_URL` so invite and password-reset links can redirect there
 
 7. **Load the extension.** `chrome://extensions` → enable Developer mode → "Load unpacked" → select this directory.
 
 ## Using it
 
-1. Open the popup, sign up (email + password).
+Signup is invite-only on the hosted project (public self-signup is disabled — see [Security notes](#security-notes)). To invite someone: Supabase Dashboard → Authentication → Users → **Invite user** → enter their email. They'll get an email with a link to `docs/auth.html` to set their password; from there:
+
+1. Open the popup, log in.
 2. Browse to a job posting, click **Save current tab**.
 3. Click **Open dashboard →**. In the **Resume** tab, paste your resume once.
 4. In the **Jobs** tab, select the captured job and click **Tailor resume + cover letter**.
 5. Track status per job (`saved`/`applied`/`interviewing`/`offer`/`rejected`) from the detail panel.
+
+Forgot your password? Use the "Forgot password?" link in the popup — same `docs/auth.html` page handles both invite and password-reset links.
 
 ## Development
 
@@ -147,6 +153,8 @@ git config core.hooksPath .githooks
 - **RLS on every table**, scoped to `auth.uid()` — the actual isolation boundary between users, not just UI filtering.
 - **Abuse guards on `tailor`**: a per-provider model allowlist (arbitrary model strings are rejected), a 15-second per-job debounce, and a 20-calls/hour per-user cap, backed by a single `applications.last_tailored_at` column rather than a separate rate-limiting service.
 - **No `innerHTML` with untrusted data.** Job titles/descriptions (from arbitrary web pages) and LLM output are rendered via `textContent`/`.value`, never string-interpolated into HTML. Job URLs are validated to `http(s)` before ever becoming a real link.
+- **Invite-only signup.** Public self-registration is disabled (`enable_signup = false`) — this repo is public and `SUPABASE_URL`/the publishable key are visible in the source (by design, see below), so open signup would let anyone spend the operator's AI budget via `tailor`. New users are added via Supabase Dashboard → Authentication → Users → Invite.
+- **`SUPABASE_URL`/`SUPABASE_ANON_KEY` are meant to be public.** They identify the project and are required in any client-side call — RLS, not key secrecy, is the actual boundary. The `service_role` key and every LLM API key are the real secrets, and those only ever exist as Edge Function secrets, never in this repo or the browser.
 
 ## Not built yet (honest roadmap)
 

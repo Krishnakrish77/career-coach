@@ -70,20 +70,23 @@
         el('p', errorDescription.replace(/\+/g, ' ')),
         el('p', 'Request a new link from the extension and try again.'),
       );
-    } else if (type === 'recovery' && accessToken) {
-      const passwordLabel = el('label', 'New password');
+    } else if ((type === 'recovery' || type === 'invite') && accessToken) {
+      const isInvite = type === 'invite';
+      const passwordLabel = el('label', isInvite ? 'Choose a password' : 'New password');
       passwordLabel.appendChild(el('input', '', {
         id: 'newPassword',
         type: 'password',
         autocomplete: 'new-password',
         minlength: '8',
       }));
-      const submitBtn = el('button', 'Update password', { id: 'submitBtn', type: 'button' });
+      const submitBtn = el('button', isInvite ? 'Create account' : 'Update password', { id: 'submitBtn', type: 'button' });
       const status = el('div', '', { id: 'status', class: 'status' });
 
       render(
-        el('h1', 'Set a new password'),
-        el('p', 'Choose a new password for your Career Coach account.'),
+        el('h1', isInvite ? 'Welcome to Career Coach' : 'Set a new password'),
+        el('p', isInvite
+          ? 'You\'ve been invited — choose a password to finish setting up your account.'
+          : 'Choose a new password for your Career Coach account.'),
         passwordLabel,
         submitBtn,
         status,
@@ -113,7 +116,7 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.error_description || data.msg || `Error ${res.status}`);
           render(
-            el('h1', 'Password updated'),
+            el('h1', isInvite ? 'Account ready' : 'Password updated'),
             el('p', 'Close this tab and log in from the Career Coach extension with your new password.'),
           );
         } catch (err) {

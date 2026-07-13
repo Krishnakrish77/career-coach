@@ -1,4 +1,4 @@
-import { signUp, signIn, getValidSession } from '../src/supabase-auth.js';
+import { signIn, getValidSession, requestPasswordReset } from '../src/supabase-auth.js';
 import { getStorage, setStorage } from '../src/storage.js';
 import { listJobs, insertJob } from '../src/supabase-db.js';
 
@@ -88,7 +88,22 @@ async function handleAuth(action, statusVerb) {
 }
 
 $('signIn').addEventListener('click', () => handleAuth(signIn, 'Logging in'));
-$('signUp').addEventListener('click', () => handleAuth(signUp, 'Signing up'));
+
+$('forgotPassword').addEventListener('click', async () => {
+  const email = $('authEmail').value.trim();
+  if (!email) {
+    setStatus('accountStatus', 'Enter your email first.', 'error');
+    return;
+  }
+  setStatus('accountStatus', 'Sending reset email...');
+  try {
+    await requestPasswordReset(email);
+    setStatus('accountStatus', 'Check your email for a password reset link.', 'success');
+  } catch (err) {
+    setStatus('accountStatus', `Error: ${err.message}`, 'error');
+  }
+});
+
 $('signOut').addEventListener('click', async () => {
   await setStorage({ session: null });
   session = null;

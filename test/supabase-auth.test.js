@@ -6,8 +6,10 @@ import {
   refreshSession,
   getValidSession,
   toStoredSession,
+  requestPasswordReset,
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
+  AUTH_LANDING_URL,
 } from '../src/supabase-auth.js';
 
 function fakeResponse({ ok = true, status = 200, json = {} }) {
@@ -109,4 +111,16 @@ test('getValidSession returns null when there is no session', async () => {
     throw new Error('should not fetch');
   });
   assert.equal(result, null);
+});
+
+test('requestPasswordReset posts to /auth/v1/recover with the landing page as redirect_to', async () => {
+  let capturedUrl, capturedBody;
+  const fetchImpl = async (url, opts) => {
+    capturedUrl = url;
+    capturedBody = JSON.parse(opts.body);
+    return fakeResponse({ json: {} });
+  };
+  await requestPasswordReset('a@example.com', fetchImpl);
+  assert.equal(capturedUrl, `${SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(AUTH_LANDING_URL)}`);
+  assert.deepEqual(capturedBody, { email: 'a@example.com' });
 });
