@@ -1,5 +1,5 @@
 :root {
-  --bg: #f6f7f4;
+  --bg: #f5f7f5;
   --surface: #ffffff;
   --surface-muted: #f1f4ef;
   --surface-strong: #e8eee8;
@@ -20,7 +20,7 @@
   --info-soft: #e5effb;
   --focus: rgba(15, 139, 141, 0.24);
   --shadow: 0 12px 30px rgba(23, 32, 42, 0.08);
-  --radius: 8px;
+  --radius: 12px;
   --radius-sm: 6px;
   --space-1: 4px;
   --space-2: 8px;
@@ -46,6 +46,23 @@ body {
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 20;
+  top: -48px;
+  left: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--text);
+  color: #fff;
+  transition: top 120ms ease;
+}
+
+.skip-link:focus {
+  top: var(--space-3);
+  color: #fff;
 }
 
 h1,
@@ -361,6 +378,14 @@ button.subtle {
   border-bottom-color: var(--accent);
 }
 
+.eyebrow {
+  color: var(--accent-hover);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
 .empty-state {
   min-height: 180px;
   display: grid;
@@ -466,30 +491,109 @@ button.subtle {
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-3) var(--space-6);
+  gap: var(--space-6);
+  min-height: 72px;
+  padding: var(--space-3) max(var(--space-6), calc((100vw - 1280px) / 2));
   border-bottom: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(12px);
 }
 
+.brand {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+
+.brand:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.brand-mark {
+  width: 38px;
+  height: 38px;
+  filter: drop-shadow(0 4px 8px rgba(11, 97, 95, .18));
+}
+
+.brand-copy {
+  display: grid;
+  gap: 1px;
+  line-height: 1.2;
+}
+
+.brand-copy strong {
+  font-size: 14px;
+  letter-spacing: -.01em;
+}
+
+.brand-copy span {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .topnav .tabs {
   flex: 1;
   border-bottom: none;
+  gap: 2px;
+}
+
+.topnav .tab {
+  position: relative;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  margin: 0;
+}
+
+.topnav .tab:hover {
+  border-color: var(--border);
+  background: var(--surface-muted);
+}
+
+.topnav .tab.active {
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent-hover);
 }
 
 .account-status-nav {
-  max-width: 280px;
+  position: relative;
+  max-width: 230px;
+  padding-left: 28px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
   text-align: right;
 }
 
+.account-status-nav[data-signed-in="true"]::before {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  content: "✓";
+  transform: translateY(-50%);
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 11px;
+}
+
 .dashboard-shell {
-  max-width: 1180px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: var(--space-6);
+  padding: 32px var(--space-6) 48px;
 }
 
 .view {
@@ -505,12 +609,17 @@ button.subtle {
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
 }
 
 .toolbar-copy {
   display: grid;
-  gap: var(--space-1);
+  gap: 3px;
+}
+
+.toolbar-copy h2 {
+  font-size: 23px;
+  letter-spacing: -.025em;
 }
 
 .status-filter {
@@ -520,6 +629,36 @@ button.subtle {
 .jobs-filters {
   flex: 1;
   justify-content: flex-end;
+}
+
+.jobs-filters > label:not(.filter-checkbox) {
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 1px 0 rgba(23, 32, 42, .02);
+}
+
+/* The input/select inside has no border of its own, so the focus ring goes on
+   the pill it sits in via :focus-within. */
+.jobs-filters > label:not(.filter-checkbox):focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.jobs-filters input,
+.jobs-filters select {
+  min-height: 28px;
+  margin-top: 2px;
+  padding: 3px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.jobs-filters input:focus,
+.jobs-filters select:focus {
+  box-shadow: none;
 }
 
 .filter-checkbox {
@@ -568,12 +707,16 @@ button.subtle {
 .jobs-layout {
   display: grid;
   grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-  gap: var(--space-4);
+  gap: var(--space-5);
   align-items: start;
 }
 
 .job-list-panel {
   min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-muted) 68%, transparent);
 }
 
 .job-list {
@@ -599,7 +742,8 @@ button.subtle {
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 9px;
+  box-shadow: 0 1px 1px rgba(23, 32, 42, .025);
 }
 
 .job-card:hover {
@@ -611,7 +755,7 @@ button.subtle {
 .job-card.selected {
   border-color: var(--accent);
   background: var(--accent-soft);
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent), 0 4px 12px rgba(15, 139, 141, .08);
 }
 
 .job-card-top,
@@ -638,6 +782,12 @@ button.subtle {
 .detail-panel {
   min-height: calc(100vh - 172px);
   gap: var(--space-4);
+}
+
+.job-detail > .empty-state,
+.job-detail > .detail-panel {
+  border-radius: 14px;
+  box-shadow: var(--shadow);
 }
 
 .detail-header {
@@ -709,6 +859,8 @@ button.subtle {
 
 .form-panel {
   max-width: 760px;
+  border-radius: 14px;
+  box-shadow: 0 4px 18px rgba(23, 32, 42, .035);
 }
 
 .form-panel textarea {
@@ -728,15 +880,32 @@ button.subtle {
     padding: var(--space-3) var(--space-4);
   }
 
+  .brand-copy span {
+    display: none;
+  }
+
   .topnav .tabs {
     order: 3;
     width: 100%;
     overflow-x: auto;
   }
 
+  .topnav .tab {
+    flex: 0 0 auto;
+  }
+
   .account-status-nav {
     flex: 1;
     max-width: none;
+  }
+
+  .jobs-filters {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .jobs-filters > label:not(.filter-checkbox) {
+    flex: 1 1 160px;
   }
 
   .dashboard-shell {

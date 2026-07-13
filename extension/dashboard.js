@@ -206,6 +206,18 @@ document.querySelectorAll('.tab').forEach((tab) => {
     tab.setAttribute('aria-selected', 'true');
     $(`${tab.dataset.tab}View`).classList.add('active');
   });
+
+  tab.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const tabs = [...document.querySelectorAll('.tab')];
+    const current = tabs.indexOf(tab);
+    const next = event.key === 'Home' ? 0
+      : event.key === 'End' ? tabs.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[next].focus();
+    tabs[next].click();
+  });
 });
 
 // ---- Jobs ----
@@ -1361,11 +1373,14 @@ async function init() {
 
   if (!session) {
     $('accountStatusNav').textContent = 'Not signed in';
+    delete $('accountStatusNav').dataset.signedIn;
     document.querySelector('main').replaceChildren(emptyState('Sign in via the extension popup to use the dashboard.'));
     return;
   }
 
-  $('accountStatusNav').textContent = `Signed in as ${session.user.email}`;
+  $('accountStatusNav').textContent = session.user.email;
+  $('accountStatusNav').title = `Signed in as ${session.user.email}`;
+  $('accountStatusNav').dataset.signedIn = 'true';
   const linkedJobId = new URLSearchParams(location.search).get('job');
   if (linkedJobId) selectedJobId = linkedJobId;
   await renderJobList();
