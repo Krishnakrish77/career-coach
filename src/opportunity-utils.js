@@ -1,16 +1,15 @@
 // Explainable, deterministic PRD 2 triage. These are deliberately conservative:
 // absent data lowers confidence instead of inventing a negative signal.
 
-const REQUIRED_RE = /\b(required|must have|minimum qualifications?|basic qualifications?)\b/i;
 const REMOTE_RE = /\b(remote|work from home|distributed)\b/i;
 const HYBRID_RE = /\bhybrid\b/i;
 const ONSITE_RE = /\b(on[ -]?site|in[- ]office)\b/i;
 const AUTH_RE = /\b(authorized to work|work authorization|visa sponsorship|sponsorship|citizen(?:ship)?|security clearance)\b/i;
 const COMP_RE = /(?:\$|₹|£|€)\s?\d[\d,]*(?:\s*(?:-|to)\s*(?:\$|₹|£|€)?\s?\d[\d,]*)?(?:\s*\/?\s*(?:year|yr|hour|hr))?/i;
-
-function words(value) {
-  return new Set((value || '').toLowerCase().match(/[a-z][a-z+#.-]{1,}/g) || []);
-}
+// Tight, specific scam phrases only — not a bare "pay...training" substring
+// match, which trips on ordinary sentences like "how we pay, and the
+// training we provide" anywhere in the same line.
+const SCAM_RE = /\b(whatsapp|telegram|crypto payment|wire transfer|pay (?:for |us for )?(?:your own )?(?:equipment|training))\b/i;
 
 function clamp(value) {
   return Math.max(0, Math.min(100, Math.round(value)));
@@ -26,6 +25,10 @@ export function assessJobQuality(job = {}) {
   const concerns = [];
   const positives = [];
   let score = 100;
+  // Concrete evidence of a bad posting, as opposed to just missing/thin
+  // capture data — only this should ever be strong enough to justify
+  // recommending 'skip' outright (see buildOpportunityScorecard below).
+  let redFlag = false;
 
   if (!job.company?.trim()) {
     score -= 20;
@@ -35,8 +38,9 @@ export function assessJobQuality(job = {}) {
     score -= 25;
     concerns.push('Description is too short to assess reliably.');
   }
-  if (/\b(whatsapp|telegram|crypto payment|wire transfer|pay.*(?:equipment|training))\b/i.test(text)) {
+  if (SCAM_RE.test(text)) {
     score -= 35;
+    redFlag = true;
     concerns.push('Posting contains language commonly associated with job scams.');
   }
   if (!COMP_RE.test(text)) concerns.push('No compensation range was found.');
@@ -50,7 +54,7 @@ export function assessJobQuality(job = {}) {
   }
   if (text.length >= 800) positives.push('Description contains enough detail for a useful review.');
 
-  return { score: clamp(score), confidence: text.length >= 300 ? 'medium' : 'low', positives, concerns };
+  return { score: clamp(score), confidence: text.length >= 300 ? 'medium' : 'low', positives, concerns, redFlag };
 }
 
 export function buildOpportunityScorecard({ job = {}, match = {}, preferences = {} } = {}) {
@@ -92,8 +96,11 @@ export function buildOpportunityScorecard({ job = {}, match = {}, preferences = 
   const weighted = factors.reduce((total, factor) => total + factor.score, 0) / factors.length;
   const lowConfidence = factors.filter((factor) => factor.confidence === 'low').length;
   const isExcludedCompany = includesAny(job.company, preferences.excluded_companies);
+  // 'skip' is a definitive label, so it requires an excluded company or
+  // actual evidence of a bad posting — never just a low score driven by
+  // missing/thin capture data, which only lowers confidence elsewhere.
   let recommendation = 'needs_review';
-  if (isExcludedCompany || quality.score < 45) recommendation = 'skip';
+  if (isExcludedCompany || quality.redFlag) recommendation = 'skip';
   else if (lowConfidence >= 4) recommendation = 'needs_review';
   else if (weighted >= 75) recommendation = 'apply_now';
   else if (weighted >= 60) recommendation = 'tailor_first';

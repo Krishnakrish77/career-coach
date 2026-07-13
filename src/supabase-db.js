@@ -200,7 +200,7 @@ export async function saveOpportunityScorecard(accessToken, jobId, scorecard, fe
       method: 'POST',
       body: {
         job_id: jobId,
-        role_fit_score: scorecard.overall_score,
+        opportunity_score: scorecard.overall_score,
         must_have_fit_score: byKey.must_have_skills?.score,
         level_fit_score: byKey.seniority_fit?.score,
         location_fit_score: byKey.location_fit?.score,

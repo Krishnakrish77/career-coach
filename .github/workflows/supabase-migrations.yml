@@ -1,7 +1,8 @@
 name: Supabase migrations
 
 # Pull requests preview the migration delta against the linked project. Once
-# merged to main, the migration files are applied to the linked project.
+# merged to main, the migration files are applied to the linked Supabase
+# project through the protected production environment.
 on:
   pull_request:
     paths:

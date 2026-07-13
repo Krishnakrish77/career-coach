@@ -8,6 +8,16 @@ alter table profiles add column excluded_companies jsonb not null default '[]';
 alter table profiles add constraint profiles_remote_preference_check
   check (remote_preference is null or remote_preference in ('remote', 'hybrid', 'onsite', 'flexible'));
 
+-- role_fit_score/comp_score/personalization_score (from the init schema) were
+-- placeholders for dimensions that were never implemented. The scorecard's
+-- aggregate belongs in its own column, not overloaded onto role_fit_score
+-- (whose name means something narrower); comp_score/personalization_score
+-- have no current or planned writer, so they're dropped rather than kept as
+-- dead weight alongside their new equivalents below.
+alter table job_matches rename column role_fit_score to opportunity_score;
+alter table job_matches drop column comp_score;
+alter table job_matches drop column personalization_score;
+
 alter table job_matches add column must_have_fit_score numeric;
 alter table job_matches add column location_fit_score numeric;
 alter table job_matches add column compensation_fit_score numeric;

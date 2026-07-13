@@ -32,3 +32,30 @@ test('an explicitly excluded company is always a skip recommendation', () => {
   });
   assert.equal(card.recommendation, 'skip');
 });
+
+test('missing/thin capture data alone never produces a skip, only lower confidence', () => {
+  // No company captured, a short description, a plain http URL, and an
+  // innocuous sentence that happens to trip the (now-fixed) experience-level
+  // heuristic — none of this is actual evidence the posting is bad.
+  const card = buildOpportunityScorecard({
+    job: {
+      title: 'Backend Engineer',
+      company: '',
+      url: 'http://acme.example.com/jobs/42',
+      jd_text: 'Our team includes engineers with 10+ years of experience and we also run an intern program for students.',
+    },
+  });
+  assert.notEqual(card.recommendation, 'skip');
+});
+
+test('scam phrase requires the actual scam pattern, not just nearby ordinary words', () => {
+  const ordinary = assessJobQuality({
+    company: 'Acme',
+    jd_text: 'We are transparent about how we pay employees and the training programs available once hired. '.repeat(10),
+  });
+  assert.equal(ordinary.redFlag, false);
+  assert.ok(!ordinary.concerns.some((item) => item.includes('scams')));
+
+  const actualScam = assessJobQuality({ jd_text: 'You must pay for your own equipment before we can start onboarding.' });
+  assert.equal(actualScam.redFlag, true);
+});

@@ -12,6 +12,7 @@ import {
   getProfilePreferences,
   saveProfilePreferences,
   saveOpportunityScorecard,
+  addJobFeedback,
   getApplicationPacket,
   createApplicationPacket,
   updateApplicationPacketItem,
@@ -531,6 +532,46 @@ async function renderJobDetail(editing = false) {
       triageBtn.disabled = false;
     }
   });
+
+  // OTJ-7: an intentional skip is a productive outcome, not just a silently
+  // ignored job — recording why improves future triage.
+  const feedbackRow = document.createElement('div');
+  feedbackRow.className = 'row';
+  const feedbackReason = document.createElement('select');
+  for (const [value, label] of [
+    ['level', 'Wrong level'],
+    ['location', 'Wrong location'],
+    ['pay', 'Pay too low'],
+    ['industry', 'Wrong industry'],
+    ['company', "Don't want this company"],
+    ['poor_posting', 'Poor-quality posting'],
+    ['duplicate', 'Duplicate'],
+    ['other', 'Other'],
+  ]) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    feedbackReason.appendChild(opt);
+  }
+  const notInterestedBtn = document.createElement('button');
+  notInterestedBtn.type = 'button';
+  notInterestedBtn.className = 'subtle';
+  notInterestedBtn.textContent = 'Not Interested';
+  feedbackRow.append(feedbackReason, notInterestedBtn);
+  triageSection.appendChild(feedbackRow);
+  notInterestedBtn.addEventListener('click', async () => {
+    notInterestedBtn.disabled = true;
+    setStatusElement(triageStatus, 'Saving...');
+    try {
+      await addJobFeedback(session.accessToken, job.id, { actionTaken: 'not_interested', reason: feedbackReason.value });
+      setStatusElement(triageStatus, 'Noted — thanks, this helps future triage.', 'success');
+    } catch (err) {
+      setStatusElement(triageStatus, `Error: ${err.message}`, 'error');
+    } finally {
+      notInterestedBtn.disabled = false;
+    }
+  });
+
   card.appendChild(triageSection);
 
   const packetSection = document.createElement('section');
