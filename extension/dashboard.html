@@ -30,6 +30,15 @@
           <label class="status-filter">Status
             <select id="filterStatus"></select>
           </label>
+          <label class="status-filter">Queue
+            <select id="filterRecommendation">
+              <option value="all">All queues</option>
+              <option value="apply_now">Apply Today</option>
+              <option value="network_first">Network First</option>
+              <option value="needs_review">Needs Review</option>
+              <option value="skip">Skip / Archive</option>
+            </select>
+          </label>
           <label class="filter-checkbox">
             <input id="filterFollowUpDue" type="checkbox">
             Follow-up due
@@ -73,6 +82,35 @@
         </div>
       </div>
       <div class="panel form-panel stack">
+        <h3>Opportunity preferences</h3>
+        <label>Target titles <span class="small">(comma-separated)</span>
+          <input id="targetTitles" placeholder="Product Manager, Program Manager">
+        </label>
+        <label>Work preference
+          <select id="remotePreference">
+            <option value="">No preference</option>
+            <option value="remote">Remote</option>
+            <option value="hybrid">Hybrid</option>
+            <option value="onsite">On-site</option>
+            <option value="flexible">Flexible</option>
+          </select>
+        </label>
+        <label>Work authorization <span class="small">(optional)</span>
+          <input id="workAuthorization" placeholder="e.g. authorized to work in India">
+        </label>
+        <label>Salary floor <span class="small">(optional, annual)</span>
+          <input id="salaryMin" type="number" min="0" placeholder="e.g. 100000">
+        </label>
+        <label>Excluded companies <span class="small">(comma-separated)</span>
+          <input id="excludedCompanies" placeholder="Company names">
+        </label>
+        <div class="form-actions">
+          <button id="savePreferences" class="primary" type="button">Save Preferences</button>
+          <div id="preferencesStatus" class="status-line" aria-live="polite"></div>
+        </div>
+      </div>
+      <div class="panel form-panel stack">
+        <h3>Generation</h3>
         <label>Provider
           <select id="provider">
             <option value="anthropic">Anthropic</option>

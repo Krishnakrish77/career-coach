@@ -10,6 +10,10 @@ import {
   deleteJob,
   saveResume,
   getLatestResume,
+  getProfilePreferences,
+  saveProfilePreferences,
+  saveOpportunityScorecard,
+  addJobFeedback,
   listJobArtifacts,
   tailorJob,
   extractResumeFromPdf,
@@ -36,7 +40,7 @@ test('listJobs requests a light column set, capped, newest first', async () => {
   assert.deepEqual(result, [{ id: '1' }]);
   assert.equal(
     calls[0].url,
-    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score)&order=created_at.desc&limit=100`,
+    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)&order=created_at.desc&limit=100`,
   );
   assert.equal(calls[0].opts.headers.apikey, SUPABASE_ANON_KEY);
   assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');
@@ -196,6 +200,36 @@ test('getLatestResume returns null when there is no resume yet', async () => {
   const { fetchImpl } = fetchSequence([fakeResponse({ json: [] })]);
   const result = await getLatestResume('token-1', fetchImpl);
   assert.equal(result, null);
+});
+
+test('profile preferences are merged into the private profile row', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ target_titles: ['Engineer'] }] })]);
+  const result = await saveProfilePreferences('token-1', { target_titles: ['Engineer'], remote_preference: 'remote' }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/profiles?on_conflict=user_id`);
+  assert.equal(calls[0].opts.headers.prefer, 'resolution=merge-duplicates,return=representation');
+  assert.equal(JSON.parse(calls[0].opts.body).remote_preference, 'remote');
+  assert.deepEqual(result.target_titles, ['Engineer']);
+});
+
+test('opportunity scorecard persists individual factors and explanation', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ recommendation: 'apply_now' }] })]);
+  const scorecard = {
+    overall_score: 80, recommendation: 'apply_now', confidence: 'medium',
+    factors: [{ key: 'must_have_skills', score: 90 }, { key: 'seniority_fit', score: 80 }, { key: 'location_fit', score: 70 }, { key: 'compensation_fit', score: 60 }, { key: 'job_quality', score: 95 }],
+  };
+  await saveOpportunityScorecard('token-1', 'job-1', scorecard, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/job_matches?on_conflict=user_id,job_id`);
+  const body = JSON.parse(calls[0].opts.body);
+  assert.equal(body.job_id, 'job-1');
+  assert.equal(body.job_quality_score, 95);
+  assert.equal(body.recommendation, 'apply_now');
+});
+
+test('job feedback is an explicit user action', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'feedback-1' }] })]);
+  await addJobFeedback('token-1', 'job-1', { actionTaken: 'skipped', reason: 'location' }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/job_feedback`);
+  assert.deepEqual(JSON.parse(calls[0].opts.body), { job_id: 'job-1', action_taken: 'skipped', reason: 'location' });
 });
 
 test('listJobArtifacts requests history for one job, newest first', async () => {

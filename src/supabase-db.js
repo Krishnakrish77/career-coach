@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-auth.js';
 import { normalizeUrl, hashContent, computeCaptureQuality } from './job-utils.js';
 
 const JOB_LIST_SELECT =
-  'id,url,title,company,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score)';
+  'id,url,title,company,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)';
 
 async function restRequest(path, accessToken, { method = 'GET', body, extraHeaders = {} } = {}, fetchImpl = fetch) {
   const res = await fetchImpl(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -162,6 +162,69 @@ export async function getLatestResume(accessToken, fetchImpl = fetch) {
     fetchImpl,
   );
   return rows[0] || null;
+}
+
+// PRD 2: preferences are deliberately stored on the user's existing private
+// profile row. `merge-duplicates` keeps this safe whether onboarding created a
+// profile already or not.
+export async function getProfilePreferences(accessToken, fetchImpl = fetch) {
+  const rows = await restRequest(
+    'profiles?select=target_titles,target_locations,remote_preference,salary_min,work_authorization,excluded_companies&limit=1',
+    accessToken,
+    {},
+    fetchImpl,
+  );
+  return rows[0] || null;
+}
+
+export async function saveProfilePreferences(accessToken, preferences, fetchImpl = fetch) {
+  const [profile] = await restRequest(
+    'profiles?on_conflict=user_id',
+    accessToken,
+    {
+      method: 'POST',
+      body: { ...preferences, updated_at: new Date().toISOString() },
+      extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
+    },
+    fetchImpl,
+  );
+  return profile;
+}
+
+export async function saveOpportunityScorecard(accessToken, jobId, scorecard, fetchImpl = fetch) {
+  const byKey = Object.fromEntries(scorecard.factors.map((factor) => [factor.key, factor]));
+  const [match] = await restRequest(
+    'job_matches?on_conflict=user_id,job_id',
+    accessToken,
+    {
+      method: 'POST',
+      body: {
+        job_id: jobId,
+        role_fit_score: scorecard.overall_score,
+        must_have_fit_score: byKey.must_have_skills?.score,
+        level_fit_score: byKey.seniority_fit?.score,
+        location_fit_score: byKey.location_fit?.score,
+        compensation_fit_score: byKey.compensation_fit?.score,
+        job_quality_score: byKey.job_quality?.score,
+        recommendation: scorecard.recommendation,
+        confidence: scorecard.confidence,
+        score_explanation: scorecard,
+      },
+      extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
+    },
+    fetchImpl,
+  );
+  return match;
+}
+
+export async function addJobFeedback(accessToken, jobId, { actionTaken, reason }, fetchImpl = fetch) {
+  const [feedback] = await restRequest(
+    'job_feedback',
+    accessToken,
+    { method: 'POST', body: { job_id: jobId, action_taken: actionTaken, reason: reason || null }, extraHeaders: { prefer: 'return=representation' } },
+    fetchImpl,
+  );
+  return feedback;
 }
 
 // RAW-6/RAW-7: history of tailoring generations for one job, newest first.
