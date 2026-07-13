@@ -9,8 +9,8 @@ import {
   saveResume,
   getLatestResume,
   tailorJob,
-} from './supabase-db.js';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-auth.js';
+} from '../src/supabase-db.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../src/supabase-auth.js';
 
 function fakeResponse({ ok = true, status = 200, json = null, noContent = false }) {
   return { ok, status: noContent ? 204 : status, json: async () => json, text: async () => JSON.stringify(json) };

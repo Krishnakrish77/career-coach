@@ -1,6 +1,6 @@
-import { signUp, signIn, getValidSession } from './supabase-auth.js';
-import { getStorage, setStorage } from './storage.js';
-import { listJobs, insertJob } from './supabase-db.js';
+import { signUp, signIn, getValidSession } from '../src/supabase-auth.js';
+import { getStorage, setStorage } from '../src/storage.js';
+import { listJobs, insertJob } from '../src/supabase-db.js';
 
 const $ = (id) => document.getElementById(id);
 let session = null;
@@ -186,7 +186,7 @@ $('captureJob').addEventListener('click', async () => {
 });
 
 $('openDashboard').addEventListener('click', () => {
-  chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+  chrome.tabs.create({ url: chrome.runtime.getURL('extension/dashboard.html') });
 });
 
 loadAccount();

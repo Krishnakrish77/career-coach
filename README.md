@@ -17,12 +17,13 @@ See [Not built yet](#not-built-yet-honest-roadmap) for what this *isn't* — job
 
 ```
 Extension (Chrome, MV3)
-├─ popup.html/popup.js       — sign in/up, capture the current tab, last 3 captures, link to dashboard
-├─ dashboard.html/dashboard.js — full-page view: Jobs (list + detail), Resume, Settings
-├─ styles.css                — shared design tokens/components used by both surfaces
-├─ storage.js                 — chrome.storage.local wrapper (session + provider/model preference only)
-├─ supabase-auth.js           — email/password auth against Supabase's GoTrue REST API
-└─ supabase-db.js             — PostgREST calls (jobs/resumes/applications) + calls the `tailor` Edge Function
+├─ extension/popup.html + popup.js       — sign in/up, capture the current tab, last 3 captures, link to dashboard
+├─ extension/dashboard.html + dashboard.js — full-page view: Jobs (list + detail), Resume, Settings
+├─ extension/styles.css                  — shared design tokens/components used by both surfaces
+└─ src/
+   ├─ storage.js                         — chrome.storage.local wrapper (session + provider/model preference only)
+   ├─ supabase-auth.js                   — email/password auth against Supabase's GoTrue REST API
+   └─ supabase-db.js                     — PostgREST calls (jobs/resumes/applications) + calls the `tailor` Edge Function
 
 Supabase
 ├─ Postgres — resumes, profiles, jobs, applications, job_matches, interview_stories (RLS-scoped per user)
@@ -38,14 +39,16 @@ Why a backend at all, for a browser extension: RLS is what makes per-user data i
 
 ```
 manifest.json                 MV3 manifest — permissions, icons, popup entry point
-popup.html / popup.js         Popup UI (thin: auth + capture only)
-dashboard.html / dashboard.js Full-page dashboard (opened in its own tab)
-styles.css                    Shared design tokens + components
-storage.js                    chrome.storage.local wrapper
-supabase-auth.js              Auth: signUp/signIn/refreshSession/getValidSession
-supabase-db.js                Data: listJobs/getJob/insertJob/updateApplicationStatus/
+extension/                    Browser extension UI entrypoints and shared CSS
+  popup.html / popup.js       Popup UI (thin: auth + capture only)
+  dashboard.html / dashboard.js Full-page dashboard (opened in its own tab)
+  styles.css                  Shared design tokens + components
+src/                          Shared extension modules
+  storage.js                  chrome.storage.local wrapper
+  supabase-auth.js            Auth: signUp/signIn/refreshSession/getValidSession
+  supabase-db.js              Data: listJobs/getJob/insertJob/updateApplicationStatus/
                                deleteJob/saveResume/getLatestResume/tailorJob
-*.test.js                     Node built-in test runner (node --test), no framework/deps
+test/*.test.js                Node built-in test runner (node --test), no framework/deps
 icons/                        icon.svg (source) + rasterized PNGs + logo.svg/png
 supabase/migrations/*.sql     Schema, in order — see below
 supabase/functions/tailor/    Edge Function: the only place an LLM key is used
@@ -91,7 +94,7 @@ supabase/config.toml          Local Supabase project config (synced to the live 
    (`--use-api` bundles server-side without needing Docker running locally.)
 
 6. **Point the extension at your project.** Two places hardcode the project reference today (this is a single-deployment personal project, not yet parameterized for forks):
-   - `supabase-auth.js` — `SUPABASE_URL` and `SUPABASE_ANON_KEY` (the **publishable** key — safe to embed client-side, RLS is the actual security boundary)
+   - `src/supabase-auth.js` — `SUPABASE_URL` and `SUPABASE_ANON_KEY` (the **publishable** key — safe to embed client-side, RLS is the actual security boundary)
    - `manifest.json` — `host_permissions` must list your project's `https://<ref>.supabase.co/*`
 
 7. **Load the extension.** `chrome://extensions` → enable Developer mode → "Load unpacked" → select this directory.
@@ -107,10 +110,10 @@ supabase/config.toml          Local Supabase project config (synced to the live 
 ## Development
 
 ```
-npm test          # runs every *.test.js via Node's built-in test runner — no Jest/Mocha/etc.
+npm test          # runs every test/*.test.js via Node's built-in test runner — no Jest/Mocha/etc.
 ```
 
-Tests mock `fetch` via dependency injection (every network function takes an optional `fetchImpl` parameter) rather than stubbing globals — see `supabase-auth.test.js` / `supabase-db.test.js` for the pattern.
+Tests mock `fetch` via dependency injection (every network function takes an optional `fetchImpl` parameter) rather than stubbing globals — see `test/supabase-auth.test.js` / `test/supabase-db.test.js` for the pattern.
 
 To iterate on the Edge Function:
 ```

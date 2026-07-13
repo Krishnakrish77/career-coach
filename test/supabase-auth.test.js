@@ -8,7 +8,7 @@ import {
   toStoredSession,
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
-} from './supabase-auth.js';
+} from '../src/supabase-auth.js';
 
 function fakeResponse({ ok = true, status = 200, json = {} }) {
   return { ok, status, json: async () => json };

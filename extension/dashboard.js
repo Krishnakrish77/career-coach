@@ -1,6 +1,6 @@
-import { getValidSession } from './supabase-auth.js';
-import { getStorage, setStorage } from './storage.js';
-import { listJobs, getJob, updateApplicationStatus, deleteJob, saveResume, getLatestResume, tailorJob } from './supabase-db.js';
+import { getValidSession } from '../src/supabase-auth.js';
+import { getStorage, setStorage } from '../src/storage.js';
+import { listJobs, getJob, updateApplicationStatus, deleteJob, saveResume, getLatestResume, tailorJob } from '../src/supabase-db.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 const DEFAULT_MODEL = { anthropic: 'claude-opus-4-8', openai: 'gpt-4o', gemini: 'gemini-2.5-pro' };
