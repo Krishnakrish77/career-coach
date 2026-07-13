@@ -1,7 +1,7 @@
 # PRD 5: Guided Search Coach
 
 Status: Draft
-Target horizon: Phase 5, 24-36 weeks
+Target horizon: Phase 6, 24-36 weeks
 Primary surfaces: dashboard home, weekly plan, insights, reminders
 Dependencies: Reliable Workspace, Opportunity Triage, Application Packet, Interview Acceleration
 

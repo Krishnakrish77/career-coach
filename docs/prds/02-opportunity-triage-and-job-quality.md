@@ -53,6 +53,7 @@ Career Coach should help users answer: "Is this job worth my time right now?"
 | OTJ-6 | Add queue views: Apply Today, Network First, Needs Review, Skip/Archive. | P1 | Helps users work through jobs intentionally. |
 | OTJ-7 | Add "not interested because" reasons to improve future recommendations. | P1 | Reasons: level, location, pay, industry, company, poor posting, duplicate, other. |
 | OTJ-8 | Add confidence labels to every recommendation. | P1 | Low confidence should trigger review, not assertive advice. |
+| OTJ-9 | Add positive preference feedback: like, strong fit, target company, and target role. | P1 | Positive signals should feed discovery in PRD 6, not just hide bad matches. |
 
 ## Scorecard Model
 
@@ -66,6 +67,7 @@ The scorecard should produce separate factors before any aggregate score:
 - Compensation fit: posted range vs user minimum when available.
 - Job quality: posting freshness, completeness, company identity, suspicious language, external URL consistency.
 - Strategic value: target company, target role, learning value, referral availability.
+- Preference signal: explicit user likes, saves, skips, and apply decisions from similar jobs.
 
 Recommended aggregate labels:
 
@@ -84,6 +86,7 @@ Avoid precise claims like "82 percent chance of interview." The product does not
 - Each job detail should show the top three positive signals and top three concerns.
 - "Skip" should be a first-class productive outcome.
 - The UI should let users override recommendations and capture why.
+- The UI should capture both negative feedback and positive signals when users like a job.
 - The scorecard must distinguish "missing from resume" from "missing from your actual experience." If unsure, ask the user to add evidence rather than recommending fabrication.
 
 ## Data And Technical Implications
@@ -111,6 +114,7 @@ Likely schema additions:
   - `user_id`
   - `action_taken`
   - `reason`
+  - `sentiment`
   - `created_at`
 
 Implementation notes:
@@ -125,6 +129,7 @@ Implementation notes:
 - 75 percent of saved jobs receive a scorecard within one minute of capture or first review.
 - 50 percent of active users use a queue filter weekly.
 - 30 percent of saved jobs receive an intentional skip/archive decision.
+- 40 percent of reviewed jobs receive an explicit positive or negative preference signal.
 - Users report at least a 20 percent reduction in "not sure what to apply to next" sentiment in qualitative feedback.
 - Application-to-interview conversion improves for users who use triage compared with users who only use tailoring.
 

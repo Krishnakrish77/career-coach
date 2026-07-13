@@ -1,7 +1,7 @@
 # PRD 3: Application Packet And Assisted Apply
 
 Status: Draft
-Target horizon: Phase 3, 10-18 weeks
+Target horizon: Phase 4, 10-18 weeks
 Primary surfaces: dashboard job detail, popup/current tab assistant, export flows
 Dependencies: Reliable Application Workspace, Opportunity Triage
 
