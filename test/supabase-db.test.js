@@ -14,6 +14,10 @@ import {
   saveProfilePreferences,
   saveOpportunityScorecard,
   addJobFeedback,
+  listDiscoveryRecommendations,
+  importDiscoveredJob,
+  updateDiscoveryStatus,
+  addDiscoveryFeedback,
   createApplicationPacket,
   getApplicationPacket,
   updateApplicationPacketItem,
@@ -234,6 +238,65 @@ test('job feedback is an explicit user action', async () => {
   await addJobFeedback('token-1', 'job-1', { actionTaken: 'skipped', reason: 'location' }, fetchImpl);
   assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/job_feedback`);
   assert.deepEqual(JSON.parse(calls[0].opts.body), { job_id: 'job-1', action_taken: 'skipped', reason: 'location' });
+});
+
+test('listDiscoveryRecommendations requests the queue with its discovered job embedded, newest first', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'rec-1', discovered_jobs: { id: 'job-1' } }] })]);
+  const result = await listDiscoveryRecommendations('token-1', fetchImpl);
+  assert.equal(
+    calls[0].url,
+    `${SUPABASE_URL}/rest/v1/job_recommendations?select=*,discovered_jobs(*)&order=updated_at.desc&limit=100`,
+  );
+  assert.equal(result[0].id, 'rec-1');
+});
+
+test('importDiscoveredJob upserts the discovered job then its recommendation', async () => {
+  const { fetchImpl, calls } = fetchSequence([
+    fakeResponse({ json: [{ id: 'discovered-1' }] }),
+    fakeResponse({ json: [{ id: 'rec-1', recommendation_label: 'strong_match' }] }),
+  ]);
+  const job = { source_url: 'https://acme.test/jobs/1', title: 'Engineer', company: 'Acme', jd_text: 'text' };
+  const recommendation = { preference_fit_score: 80, job_quality_score: 90, recommendation_label: 'strong_match', reasoning: {} };
+  const result = await importDiscoveredJob('token-1', job, recommendation, fetchImpl);
+
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/discovered_jobs?on_conflict=user_id,normalized_url`);
+  assert.equal(calls[0].opts.headers.prefer, 'resolution=merge-duplicates,return=representation');
+  const discoveredBody = JSON.parse(calls[0].opts.body);
+  assert.equal(discoveredBody.normalized_url, 'acme.test/jobs/1');
+  assert.equal(typeof discoveredBody.content_hash, 'string');
+
+  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/job_recommendations?on_conflict=user_id,discovered_job_id`);
+  assert.deepEqual(JSON.parse(calls[1].opts.body), { discovered_job_id: 'discovered-1', ...recommendation });
+
+  assert.equal(result.discovered.id, 'discovered-1');
+  assert.equal(result.recommendation.id, 'rec-1');
+});
+
+test('updateDiscoveryStatus PATCHes the recommendation row by id', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'rec-1', status: 'saved' }] })]);
+  const result = await updateDiscoveryStatus('token-1', 'rec-1', 'saved', fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/job_recommendations?id=eq.rec-1`);
+  assert.equal(calls[0].opts.method, 'PATCH');
+  assert.equal(JSON.parse(calls[0].opts.body).status, 'saved');
+  assert.equal(result.status, 'saved');
+});
+
+test('addDiscoveryFeedback derives sentiment from the action', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'feedback-1' }] })]);
+  await addDiscoveryFeedback('token-1', 'discovered-1', { action: 'like', reasons: ['tech stack'] }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/job_preference_feedback`);
+  assert.deepEqual(JSON.parse(calls[0].opts.body), {
+    discovered_job_id: 'discovered-1',
+    sentiment: 'positive',
+    action: 'like',
+    reasons: ['tech stack'],
+  });
+});
+
+test('addDiscoveryFeedback treats skip/hide as negative sentiment', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'feedback-1' }] })]);
+  await addDiscoveryFeedback('token-1', 'discovered-1', { action: 'hide' }, fetchImpl);
+  assert.equal(JSON.parse(calls[0].opts.body).sentiment, 'negative');
 });
 
 test('application packets are created with items but never submitted implicitly', async () => {
