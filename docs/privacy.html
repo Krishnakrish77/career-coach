@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Career Coach</title>
+<link rel="icon" href="assets/favicon.png">
+<style>
+  :root {
+    --bg: #f6f7f4; --surface: #ffffff; --border: #dce3dc; --text: #17202a;
+    --text-muted: #627080; --accent: #0f8b8d; --accent-hover: #0b6f71; --accent-soft: #e4f4f2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font: 16px/1.65 "Inter", system-ui, -apple-system, sans-serif;
+    color: var(--text); background: var(--bg);
+  }
+  main { max-width: 680px; margin: 0 auto; padding: 56px 24px 80px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .updated { color: var(--text-muted); font-size: 13px; margin: 0 0 32px; }
+  h2 { font-size: 18px; margin: 32px 0 10px; }
+  p, li { color: var(--text); font-size: 15px; }
+  ul { padding-left: 20px; }
+  .note {
+    background: var(--accent-soft); border-radius: 10px; padding: 14px 18px;
+    font-size: 14px; margin: 20px 0;
+  }
+  a { color: var(--accent); }
+  a:hover { color: var(--accent-hover); }
+  footer {
+    margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border);
+    font-size: 13px; color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+  <main>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: 2026-07-13</p>
+
+    <p>Career Coach is an open-source browser extension maintained by an individual, not a company. This policy is a plain-language, good-faith description of how data flows through it — not a substitute for legal advice.</p>
+
+    <div class="note">
+      <strong>Default vs. self-hosted:</strong> unless you follow the self-hosting steps in the <a href="https://github.com/Krishnakrish77/career-coach#setup">README</a> to deploy your own Supabase project, the extension as cloned/loaded connects to the maintainer's Supabase project by default. That means your data is stored on shared infrastructure the maintainer operates, not infrastructure only you control, unless you deploy your own.
+    </div>
+
+    <h2>What we collect</h2>
+    <ul>
+      <li><strong>Account info</strong> — email and password, handled by Supabase Auth. Passwords are hashed; the maintainer never sees them in plain text.</li>
+      <li><strong>Resume text</strong> — whatever you paste into the Resume tab.</li>
+      <li><strong>Captured job postings</strong> — the URL, title, and page text of jobs you save via the popup.</li>
+      <li><strong>Application status</strong> — the status you set per job (saved/applied/interviewing/offer/rejected).</li>
+      <li><strong>Provider/model preference</strong> — which AI provider you've selected, stored locally in your browser, not in the database.</li>
+    </ul>
+
+    <h2>How it's used</h2>
+    <p>Your resume text and a captured job's text are sent to whichever AI provider you select (Anthropic, OpenAI, or Google Gemini) solely to generate a tailored resume and cover letter for that job. That call happens server-side — your browser never holds an AI provider's API key. We don't use your data for anything beyond that, and we don't sell it.</p>
+    <p>Sending your resume/job text to a third-party AI provider means that provider's own privacy policy also applies to that data: <a href="https://www.anthropic.com/legal/privacy">Anthropic</a>, <a href="https://openai.com/policies/privacy-policy">OpenAI</a>, <a href="https://policies.google.com/privacy">Google</a>.</p>
+
+    <h2>Where it's stored</h2>
+    <p>In a Postgres database hosted by <a href="https://supabase.com/privacy">Supabase</a>, with row-level security scoped to your account — enforced at the database level, not just in the app's UI, so no other user's queries can reach your rows.</p>
+
+    <h2>Deleting your data</h2>
+    <p>There's no self-service "delete my account" button in the extension yet — that's an honest gap, not a hidden decision. Until it exists, open a <a href="https://github.com/Krishnakrish77/career-coach/issues">GitHub issue</a> or contact the maintainer directly and your account and its data will be deleted manually.</p>
+
+    <h2>Changes</h2>
+    <p>If this policy changes in a way that matters, the "Last updated" date above will change and, where practical, we'll note what changed.</p>
+
+    <footer>
+      <a href="index.html">← Back to Career Coach</a>
+    </footer>
+  </main>
+</body>
+</html>

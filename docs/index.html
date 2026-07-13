@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Career Coach — AI job search co-pilot for Chrome</title>
+<meta name="description" content="Capture job postings, tailor your resume and cover letter with AI, and track applications — a Chrome extension backed by Supabase, open source and self-hostable.">
+<link rel="icon" href="assets/favicon.png">
+<style>
+  :root {
+    --bg: #f6f7f4; --surface: #ffffff; --border: #dce3dc; --text: #17202a;
+    --text-muted: #627080; --accent: #0f8b8d; --accent-hover: #0b6f71; --accent-soft: #e4f4f2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font: 16px/1.6 "Inter", system-ui, -apple-system, sans-serif;
+    color: var(--text); background: var(--bg);
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 64px 24px 0; }
+  .hero { text-align: center; margin-bottom: 40px; }
+  .hero img { width: 88px; height: 88px; border-radius: 20px; }
+  h1 { font-size: 32px; margin: 20px 0 8px; }
+  .tagline { color: var(--text-muted); font-size: 18px; margin: 0 0 24px; }
+  h2 { font-size: 22px; margin: 0 0 20px; text-align: center; }
+  section { margin-bottom: 64px; }
+  .cta {
+    display: inline-block; background: var(--accent); color: #fff; text-decoration: none;
+    font-weight: 600; padding: 13px 26px; border-radius: 8px; font-size: 15px;
+  }
+  .cta:hover { background: var(--accent-hover); }
+  .cta-row { text-align: center; }
+  .cta-secondary {
+    display: inline-block; margin-left: 12px; color: var(--text-muted);
+    text-decoration: none; font-size: 15px; padding: 13px 8px;
+  }
+  .cta-secondary:hover { color: var(--accent-hover); }
+
+  /* feature blocks */
+  .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .feature {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px;
+  }
+  .feature .icon { font-size: 22px; }
+  .feature h3 { font-size: 16px; margin: 10px 0 6px; }
+  .feature p { color: var(--text-muted); font-size: 14px; margin: 0; }
+
+  /* trust band, in place of fabricated user-count social proof */
+  .trust { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .trust-item {
+    background: var(--accent-soft); border-radius: 10px; padding: 16px 18px; font-size: 14px;
+  }
+  .trust-item strong { display: block; color: var(--accent-hover); margin-bottom: 4px; font-size: 15px; }
+
+  /* FAQ */
+  details {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 18px; margin-bottom: 10px;
+  }
+  summary { font-weight: 600; cursor: pointer; }
+  details p { color: var(--text-muted); margin: 10px 0 0; font-size: 14px; }
+
+  a { color: var(--accent); }
+  footer {
+    text-align: center; color: var(--text-muted); font-size: 13px;
+    border-top: 1px solid var(--border); padding: 24px 24px 40px;
+  }
+  footer a { color: var(--text-muted); margin: 0 8px; }
+  footer a:hover { color: var(--accent-hover); }
+
+  @media (max-width: 520px) {
+    .features, .trust { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <main>
+    <div class="hero">
+      <img src="assets/logo.png" alt="Career Coach logo">
+      <h1>Career Coach</h1>
+      <p class="tagline">Your AI-powered job search co-pilot — right in your browser.</p>
+      <div class="cta-row">
+        <a class="cta" href="https://github.com/Krishnakrish77/career-coach#setup">Get started →</a>
+        <a class="cta-secondary" href="https://github.com/Krishnakrish77/career-coach">View on GitHub</a>
+      </div>
+    </div>
+
+    <section>
+      <h2>What it does</h2>
+      <div class="features">
+        <div class="feature">
+          <div class="icon">📌</div>
+          <h3>Capture</h3>
+          <p>One click in the popup saves the job posting you're looking at — no copy-pasting.</p>
+        </div>
+        <div class="feature">
+          <div class="icon">✍️</div>
+          <h3>Tailor</h3>
+          <p>Generates a tailored resume and cover letter per job — Anthropic, OpenAI, or Gemini, your choice.</p>
+        </div>
+        <div class="feature">
+          <div class="icon">📋</div>
+          <h3>Track</h3>
+          <p>Per-job application status, from saved through offer or rejected.</p>
+        </div>
+        <div class="feature">
+          <div class="icon">🔄</div>
+          <h3>Multi-device</h3>
+          <p>Your data lives in your account, not one browser's local storage.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Built to be trusted with your resume</h2>
+      <div class="trust">
+        <div class="trust-item"><strong>Open source</strong>Every line is in the repo — nothing to take on faith.</div>
+        <div class="trust-item"><strong>Self-hostable</strong>Run it on your own Supabase project; we don't operate a shared server.</div>
+        <div class="trust-item"><strong>No client-side API keys</strong>LLM keys never touch your browser — calls run server-side, gated by an allowlist and rate limits.</div>
+        <div class="trust-item"><strong>Row-level security</strong>Every table is scoped to your account at the database level, not just the UI.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>FAQ</h2>
+      <details>
+        <summary>Is this on the Chrome Web Store?</summary>
+        <p>Not yet — for now, install it as an unpacked extension. Setup instructions are in the GitHub README.</p>
+      </details>
+      <details>
+        <summary>Do I need my own AI API key?</summary>
+        <p>No — tailoring calls run through a server-side Edge Function using the operator's key. You just pick a provider and model in Settings.</p>
+      </details>
+      <details>
+        <summary>Is my resume data private?</summary>
+        <p>Your resume and job data are stored in Postgres with row-level security scoped to your account — no other user can query it. See the <a href="privacy.html">Privacy Policy</a> for details.</p>
+      </details>
+      <details>
+        <summary>Is this open source?</summary>
+        <p>Yes, MIT-licensed open source — the full source, including the database schema and Edge Function, is on GitHub.</p>
+      </details>
+    </section>
+
+    <footer>
+      <a href="https://github.com/Krishnakrish77/career-coach">GitHub</a>
+      <a href="privacy.html">Privacy Policy</a>
+    </footer>
+  </main>
+</body>
+</html>

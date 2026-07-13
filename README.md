@@ -156,4 +156,8 @@ The schema (`job_matches`, `interview_stories`, `profiles`) has room for these, 
 - Fit scoring (`job_matches` — role/CV/level/comp/personalization scorecard, legitimacy flag)
 - Skill-based profile extraction from the resume
 - Interview story bank (STAR+R)
-- CI, a release/packaging workflow, and a Supabase preview branch for testing migrations before production — still manual today
+- A Supabase preview branch for testing migrations before production — still manual today
+
+## License
+
+MIT. See [LICENSE](LICENSE).

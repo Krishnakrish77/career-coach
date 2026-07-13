@@ -53,26 +53,41 @@
     const accessToken = hashParams.get('access_token');
     const errorDescription = hashParams.get('error_description');
 
-    function render(html) {
-      card.innerHTML = html;
+    function el(tag, text = '', attrs = {}) {
+      const node = document.createElement(tag);
+      if (text) node.textContent = text;
+      for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
+      return node;
+    }
+
+    function render(...nodes) {
+      card.replaceChildren(...nodes);
     }
 
     if (errorDescription) {
-      render(`
-        <h1>Link expired or invalid</h1>
-        <p>${errorDescription.replace(/\+/g, ' ')}</p>
-        <p>Request a new link from the extension and try again.</p>
-      `);
+      render(
+        el('h1', 'Link expired or invalid'),
+        el('p', errorDescription.replace(/\+/g, ' ')),
+        el('p', 'Request a new link from the extension and try again.'),
+      );
     } else if (type === 'recovery' && accessToken) {
-      render(`
-        <h1>Set a new password</h1>
-        <p>Choose a new password for your Career Coach account.</p>
-        <label>New password
-          <input id="newPassword" type="password" autocomplete="new-password" minlength="8">
-        </label>
-        <button id="submitBtn" type="button">Update password</button>
-        <div id="status" class="status"></div>
-      `);
+      const passwordLabel = el('label', 'New password');
+      passwordLabel.appendChild(el('input', '', {
+        id: 'newPassword',
+        type: 'password',
+        autocomplete: 'new-password',
+        minlength: '8',
+      }));
+      const submitBtn = el('button', 'Update password', { id: 'submitBtn', type: 'button' });
+      const status = el('div', '', { id: 'status', class: 'status' });
+
+      render(
+        el('h1', 'Set a new password'),
+        el('p', 'Choose a new password for your Career Coach account.'),
+        passwordLabel,
+        submitBtn,
+        status,
+      );
       document.getElementById('submitBtn').addEventListener('click', async () => {
         const password = document.getElementById('newPassword').value;
         const statusEl = document.getElementById('status');
@@ -84,7 +99,7 @@
         }
         btn.disabled = true;
         statusEl.textContent = 'Updating...';
-        statusEl.dataset.kind = '';
+        delete statusEl.dataset.kind;
         try {
           const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
             method: 'PUT',
@@ -97,10 +112,10 @@
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error_description || data.msg || `Error ${res.status}`);
-          render(`
-            <h1>Password updated</h1>
-            <p>Close this tab and log in from the Career Coach extension with your new password.</p>
-          `);
+          render(
+            el('h1', 'Password updated'),
+            el('p', 'Close this tab and log in from the Career Coach extension with your new password.'),
+          );
         } catch (err) {
           statusEl.textContent = `Error: ${err.message}`;
           statusEl.dataset.kind = 'error';
@@ -108,15 +123,15 @@
         }
       });
     } else if (type === 'signup' || type === 'email_change') {
-      render(`
-        <h1>Email confirmed</h1>
-        <p>Close this tab and log in from the Career Coach extension.</p>
-      `);
+      render(
+        el('h1', 'Email confirmed'),
+        el('p', 'Close this tab and log in from the Career Coach extension.'),
+      );
     } else {
-      render(`
-        <h1>Career Coach</h1>
-        <p>This page is only meant to be reached from an email confirmation or password reset link.</p>
-      `);
+      render(
+        el('h1', 'Career Coach'),
+        el('p', 'This page is only meant to be reached from an email confirmation or password reset link.'),
+      );
     }
   </script>
 </body>
