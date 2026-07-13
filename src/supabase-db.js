@@ -227,6 +227,31 @@ export async function addJobFeedback(accessToken, jobId, { actionTaken, reason }
   return feedback;
 }
 
+export async function listDiscoveryRecommendations(accessToken, fetchImpl = fetch) {
+  return restRequest('job_recommendations?select=*,discovered_jobs(*)&order=updated_at.desc&limit=100', accessToken, {}, fetchImpl);
+}
+
+export async function importDiscoveredJob(accessToken, job, recommendation, fetchImpl = fetch) {
+  const normalized_url = normalizeUrl(job.source_url);
+  const content_hash = await hashContent(job.jd_text);
+  const [discovered] = await restRequest('discovered_jobs?on_conflict=user_id,normalized_url', accessToken, {
+    method: 'POST', body: { ...job, normalized_url, content_hash, last_seen_at: new Date().toISOString() },
+    extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
+  }, fetchImpl);
+  const [saved] = await restRequest('job_recommendations?on_conflict=user_id,discovered_job_id', accessToken, {
+    method: 'POST', body: { discovered_job_id: discovered.id, ...recommendation },
+    extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
+  }, fetchImpl);
+  return { discovered, recommendation: saved };
+}
+
+export async function updateDiscoveryStatus(accessToken, recommendationId, status, fetchImpl = fetch) {
+  const [recommendation] = await restRequest(`job_recommendations?id=eq.${recommendationId}`, accessToken, {
+    method: 'PATCH', body: { status, updated_at: new Date().toISOString() }, extraHeaders: { prefer: 'return=representation' },
+  }, fetchImpl);
+  return recommendation;
+}
+
 // PRD 3: packets are an explicit user-created workspace; creating one never
 // changes an application to submitted or writes to a third-party website.
 export async function getApplicationPacket(accessToken, jobId, fetchImpl = fetch) {
