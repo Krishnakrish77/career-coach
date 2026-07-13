@@ -169,7 +169,7 @@ export async function getLatestResume(accessToken, fetchImpl = fetch) {
 // profile already or not.
 export async function getProfilePreferences(accessToken, fetchImpl = fetch) {
   const rows = await restRequest(
-    'profiles?select=target_titles,target_locations,remote_preference,salary_min,work_authorization,excluded_companies&limit=1',
+    'profiles?select=target_titles,title_aliases,target_locations,remote_preference,salary_min,industries,seniority_targets,work_authorization,excluded_companies&limit=1',
     accessToken,
     {},
     fetchImpl,
@@ -300,6 +300,71 @@ export async function submitApplicationPacket(accessToken, packetId, { confirmat
     method: 'PATCH', body: { status: 'submitted', updated_at: new Date().toISOString() }, extraHeaders: { prefer: 'return=representation' },
   }, fetchImpl);
   return submission;
+}
+
+// PRD 4: stories are user-confirmed preparation material. Sensitive stories
+// remain private and callers deliberately exclude them from matching.
+export async function listInterviewStories(accessToken, fetchImpl = fetch) {
+  return restRequest('interview_stories?select=*&order=updated_at.desc&limit=100', accessToken, {}, fetchImpl);
+}
+
+export async function saveInterviewStory(accessToken, story, fetchImpl = fetch) {
+  const endpoint = story.id ? `interview_stories?id=eq.${story.id}` : 'interview_stories';
+  const method = story.id ? 'PATCH' : 'POST';
+  const body = { ...story, updated_at: new Date().toISOString() };
+  delete body.id;
+  const [saved] = await restRequest(endpoint, accessToken, {
+    method, body, extraHeaders: { prefer: 'return=representation' },
+  }, fetchImpl);
+  return saved;
+}
+
+export async function deleteInterviewStory(accessToken, storyId, fetchImpl = fetch) {
+  return restRequest(`interview_stories?id=eq.${storyId}`, accessToken, { method: 'DELETE' }, fetchImpl);
+}
+
+export async function saveInterviewPrepSession(accessToken, session, fetchImpl = fetch) {
+  const [saved] = await restRequest('interview_prep_sessions', accessToken, {
+    method: 'POST', body: session, extraHeaders: { prefer: 'return=representation' },
+  }, fetchImpl);
+  return saved;
+}
+
+// PRD 5: all coaching is derived from a user's own rows; no third-party
+// tracking is required.
+export async function getJobSearchGoals(accessToken, fetchImpl = fetch) {
+  const rows = await restRequest('job_search_goals?select=*&limit=1', accessToken, {}, fetchImpl);
+  return rows[0] || null;
+}
+
+export async function saveJobSearchGoals(accessToken, goals, fetchImpl = fetch) {
+  const [saved] = await restRequest('job_search_goals?on_conflict=user_id', accessToken, {
+    method: 'POST', body: { ...goals, updated_at: new Date().toISOString() },
+    extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
+  }, fetchImpl);
+  return saved;
+}
+
+export async function getWeeklyPlan(accessToken, week, fetchImpl = fetch) {
+  const rows = await restRequest(`weekly_plans?week_start=eq.${week}&select=*,weekly_plan_items(*)`, accessToken, {}, fetchImpl);
+  return rows[0] || null;
+}
+
+export async function saveWeeklyPlan(accessToken, { weekStart, summary, items }, fetchImpl = fetch) {
+  const [plan] = await restRequest('weekly_plans?on_conflict=user_id,week_start', accessToken, {
+    method: 'POST', body: { week_start: weekStart, summary }, extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
+  }, fetchImpl);
+  if (items?.length) await restRequest('weekly_plan_items', accessToken, {
+    method: 'POST', body: items.map((item) => ({ ...item, weekly_plan_id: plan.id })), extraHeaders: { prefer: 'return=representation' },
+  }, fetchImpl);
+  return plan;
+}
+
+export async function updateWeeklyPlanItem(accessToken, itemId, fields, fetchImpl = fetch) {
+  const [item] = await restRequest(`weekly_plan_items?id=eq.${itemId}`, accessToken, {
+    method: 'PATCH', body: fields, extraHeaders: { prefer: 'return=representation' },
+  }, fetchImpl);
+  return item;
 }
 
 // RAW-6/RAW-7: history of tailoring generations for one job, newest first.
