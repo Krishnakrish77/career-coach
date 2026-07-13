@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Career Coach — Dashboard</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { padding: 0; }
+  .topnav {
+    display: flex; align-items: center; gap: var(--space-4);
+    padding: var(--space-3) var(--space-6);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .topnav .tabs { border-bottom: none; flex: 1; }
+  main { max-width: 1080px; margin: 0 auto; padding: var(--space-6); }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .jobs-layout { display: grid; grid-template-columns: 320px 1fr; gap: var(--space-4); align-items: start; }
+  .job-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 80vh; overflow-y: auto; }
+  .job-card { cursor: pointer; }
+  .job-card.selected { border-color: var(--accent); }
+  .job-card h3 { margin-bottom: 2px; }
+  .job-detail textarea { min-height: 220px; font-size: 12px; }
+  .job-detail .jd-text { max-height: 160px; overflow-y: auto; white-space: pre-wrap; font-size: 12px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+  <div class="topnav">
+    <h1>Career Coach</h1>
+    <div class="tabs">
+      <button class="tab active" data-tab="jobs">Jobs</button>
+      <button class="tab" data-tab="resume">Resume</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </div>
+    <div id="accountStatusNav" class="small"></div>
+  </div>
+
+  <main>
+    <section id="jobsView" class="view active">
+      <div class="row" style="margin-bottom: var(--space-4); max-width: 220px;">
+        <select id="filterStatus"></select>
+      </div>
+      <div class="jobs-layout">
+        <div id="jobList" class="job-list"></div>
+        <div id="jobDetail" class="job-detail"></div>
+      </div>
+    </section>
+
+    <section id="resumeView" class="view">
+      <h2>Resume</h2>
+      <p class="small">This is the text used when tailoring — paste your current resume here.</p>
+      <textarea id="resumeText" placeholder="Paste your resume text here" style="min-height: 300px;"></textarea>
+      <button id="saveResume" class="primary" style="margin-top: var(--space-3);">Save resume</button>
+      <div id="resumeStatus" class="small"></div>
+    </section>
+
+    <section id="settingsView" class="view">
+      <h2>Settings</h2>
+      <p class="small">API keys live server-side now — this just picks which model tailors your resume.</p>
+      <div class="card stack" style="max-width: 420px;">
+        <label>Provider
+          <select id="provider">
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+            <option value="gemini">Gemini</option>
+          </select>
+        </label>
+        <label>Model
+          <input id="model" placeholder="claude-opus-4-8">
+        </label>
+        <button id="saveSettings" class="primary">Save settings</button>
+        <div id="settingsStatus" class="small"></div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>

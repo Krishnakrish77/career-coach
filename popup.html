@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Career Coach</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { width: 300px; padding: var(--space-3); }
+  .card + .card { margin-top: var(--space-2); }
+</style>
+</head>
+<body>
+  <h1 style="margin-bottom: var(--space-3);">Career Coach</h1>
+
+  <div id="accountSignedOut" class="card stack">
+    <input id="authEmail" type="email" placeholder="you@example.com">
+    <input id="authPassword" type="password" placeholder="Password">
+    <div class="row">
+      <button id="signIn">Log in</button>
+      <button id="signUp">Sign up</button>
+    </div>
+  </div>
+  <div id="accountSignedIn" class="card row" style="display:none">
+    <div class="small">Signed in as <span id="accountEmail"></span></div>
+    <button id="signOut" style="flex: 0;">Log out</button>
+  </div>
+  <div id="accountStatus" class="small"></div>
+
+  <div id="signedInActions" style="display:none">
+    <button id="captureJob" class="primary" style="width: 100%; margin-top: var(--space-3);">
+      Save current tab as job
+    </button>
+    <div id="captureStatus" class="small"></div>
+
+    <div id="recentJobs" class="stack" style="margin-top: var(--space-3);"></div>
+
+    <button id="openDashboard" style="width: 100%; margin-top: var(--space-3);">
+      Open dashboard →
+    </button>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
