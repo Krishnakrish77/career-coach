@@ -1,9 +1,11 @@
 import { signIn, getValidSession, requestPasswordReset } from '../src/supabase-auth.js';
 import { getStorage, setStorage } from '../src/storage.js';
 import { listJobs, insertJob } from '../src/supabase-db.js';
+import { detectApplicationFields } from '../src/form-utils.js';
 
 const $ = (id) => document.getElementById(id);
 let session = null;
+let formSuggestions = [];
 
 function setStatus(id, message, kind = '') {
   const el = $(id);
@@ -230,6 +232,35 @@ $('captureJob').addEventListener('click', async () => {
     btn.textContent = originalText;
     btn.removeAttribute('aria-busy');
   }
+});
+
+// Preview first; writing is separately confirmed and only targets safe text fields.
+$('previewForm').addEventListener('click', async () => {
+  const output = $('formPreview'); output.textContent = 'Reading visible fields...';
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !/^https?:\/\//i.test(tab.url || '')) throw new Error('Open an application webpage first.');
+    const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => [...document.querySelectorAll('input, textarea')].filter((el) => !el.disabled && el.type !== 'hidden').map((el) => ({ name: el.name, id: el.id, label: document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.innerText || '', placeholder: el.placeholder, tag: el.tagName.toLowerCase() })) });
+    const fields = detectApplicationFields(result || []); formSuggestions = fields; $('fillForm').disabled = !fields.length; output.textContent = fields.length ? `Preview: ${fields.map((field) => `${field.type} (${field.confidence})`).join(', ')}. Filling remains optional and never submits.` : 'No common application fields found.';
+  } catch (err) { output.textContent = `Could not inspect this page: ${err.message}`; }
+});
+
+$('fillForm').addEventListener('click', async () => {
+  if (!formSuggestions.length || !confirm('Fill only the reviewed safe text fields? This never uploads files or submits.')) return;
+  // Keyed by groupKey, not bare type — two fields of the same type (e.g.
+  // "First Name" and "Last Name", or two different essay questions) are
+  // prompted and filled separately rather than both getting one shared value.
+  const values = {};
+  for (const key of [...new Set(formSuggestions.map((field) => field.groupKey))]) {
+    const sample = formSuggestions.find((field) => field.groupKey === key);
+    const value = prompt(`Value for ${sample.type}${sample.label ? ` — "${sample.label}"` : ''} (leave blank to skip):`);
+    if (value) values[key] = value;
+  }
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [{ result: changed }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, args: [formSuggestions, values], func: (suggestions, data) => { let count = 0; for (const field of suggestions) { const value = data[field.groupKey]; if (!value) continue; const el = field.id ? document.getElementById(field.id) : document.querySelector(`[name="${CSS.escape(field.name || '')}"]`); if (!el || el.type === 'file' || el.matches('button,[type=submit],[type=checkbox],[type=radio]')) continue; el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); count += 1; } return count; } });
+    $('formPreview').textContent = changed ? `Filled ${changed} reviewed field${changed === 1 ? '' : 's'}. Review every value before continuing.` : 'No field values were entered.';
+  } catch (err) { $('formPreview').textContent = `Could not fill fields: ${err.message}`; }
 });
 
 $('openDashboard').addEventListener('click', () => openDashboard());

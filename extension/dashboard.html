@@ -58,6 +58,7 @@
 
     <section id="discoveryView" class="view">
       <div class="view-toolbar"><div class="toolbar-copy"><h2>Discovery</h2><div class="small">Import roles you find; recommendations stay separate until you save one.</div></div></div>
+      <div class="panel form-panel stack"><div class="row"><h3 class="grow">This week’s digest</h3><button id="showDiscoveryDigest" class="subtle" type="button">Refresh digest</button></div><div id="discoveryDigest" class="small"></div></div>
       <div class="panel form-panel stack">
         <h3>Import a job to review</h3>
         <label>Job URL <input id="discoveryUrl" type="url" placeholder="https://company.example/jobs/123"></label>
@@ -106,13 +107,14 @@
           <label>Skills <input id="storySkills" placeholder="stakeholder management, analytics"></label>
           <label>Themes <input id="storyThemes" placeholder="leadership, execution"></label>
           <label class="filter-checkbox"><input id="storySensitive" type="checkbox"> Sensitive/private — exclude from suggestions</label>
-          <button id="saveStory" class="primary" type="button">Save Story</button><button id="cancelStoryEdit" class="subtle" type="button" style="display:none">Cancel Edit</button><div id="storyStatus" class="status-line" aria-live="polite"></div>
+          <button id="saveStory" class="primary" type="button">Save Story</button><button id="seedStories" class="subtle" type="button">Draft from Resume</button><button id="cancelStoryEdit" class="subtle" type="button" style="display:none">Cancel Edit</button><div id="storyStatus" class="status-line" aria-live="polite"></div>
           <div id="storyList" class="stack compact"></div>
         </section>
         <section class="panel form-panel stack">
           <h3>Practice for a saved job</h3>
           <label>Job <select id="interviewJob"></select></label>
           <div id="likelyQuestions" class="stack compact"></div>
+          <div id="interviewChecklist" class="stack compact"></div>
           <label>Your timed practice answer <textarea id="practiceAnswer" placeholder="Practice in advance. Use a clear situation, action, and verified result."></textarea></label>
           <button id="reviewPractice" class="primary" type="button">Review & Save Practice</button><div id="practiceStatus" class="status-line" aria-live="polite"></div>
           <div id="practiceFeedback" class="small"></div>
@@ -133,7 +135,7 @@
           <label>Constraints <textarea id="goalConstraints" placeholder="Time, location, or other constraints"></textarea></label>
           <button id="saveGoals" class="primary" type="button">Save Goals</button><div id="goalsStatus" class="status-line" aria-live="polite"></div>
         </section>
-        <section class="panel form-panel stack"><h3>This week</h3><div id="planAnalytics" class="small"></div><div id="planItems" class="stack"></div><div id="planInsights" class="stack compact"></div><button id="generatePlan" class="primary" type="button">Generate Weekly Plan</button><div id="planStatus" class="status-line" aria-live="polite"></div></section>
+        <section class="panel form-panel stack"><h3>This week</h3><div id="planAnalytics" class="small"></div><div id="planItems" class="stack"></div><div id="planInsights" class="stack compact"></div><button id="generatePlan" class="primary" type="button">Generate Weekly Plan</button><h3>Reminders</h3><div id="reminderList" class="stack compact"></div><label>Reminder <input id="reminderText" placeholder="Follow up with Acme"></label><label>Due date <input id="reminderDue" type="date"></label><button id="addReminder" class="subtle" type="button">Add Reminder</button><h3>Weekly retrospective</h3><label>What worked? <textarea id="retroWorked"></textarea></label><label>What will you adjust? <textarea id="retroAdjust"></textarea></label><label>Notes <textarea id="retroNote"></textarea></label><button id="saveRetro" class="subtle" type="button">Save Retrospective</button><div id="planStatus" class="status-line" aria-live="polite"></div></section>
       </div>
     </section>
 
@@ -152,6 +154,7 @@
         <label>Target locations <span class="small">(comma-separated)</span><input id="targetLocations" placeholder="Remote, Bengaluru"></label>
         <label>Target industries <span class="small">(comma-separated)</span><input id="industries" placeholder="SaaS, Fintech"></label>
         <label>Seniority targets <span class="small">(comma-separated)</span><input id="seniorityTargets" placeholder="Mid, Senior"></label>
+        <label>Company sizes <span class="small">(comma-separated)</span><input id="companySizes" placeholder="Startup, Mid-market"></label>
         <label>Work preference
           <select id="remotePreference">
             <option value="">No preference</option>

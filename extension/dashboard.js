@@ -14,7 +14,8 @@ import {
   saveOpportunityScorecard,
   addJobFeedback,
   listDiscoveryRecommendations,
-  importDiscoveredJob,
+  resolveDiscoveredJob,
+  saveDiscoveryRecommendation,
   updateDiscoveryStatus,
   addDiscoveryFeedback,
   insertJob,
@@ -34,12 +35,14 @@ import {
   getWeeklyPlan,
   saveWeeklyPlan,
   updateWeeklyPlanItem,
+  listCoachingReminders, saveCoachingReminder, updateCoachingReminder, getWeeklyRetrospective, saveWeeklyRetrospective,
+  listInterviewChecklist, saveInterviewChecklistItem,
 } from '../src/supabase-db.js';
 import { checkResumeHealth } from '../src/job-utils.js';
 import { buildOpportunityScorecard, recommendationLabel } from '../src/opportunity-utils.js';
 import { createPacketDrafts } from '../src/packet-utils.js';
 import { buildDiscoveryRecommendation } from '../src/discovery-utils.js';
-import { buildLikelyQuestions, matchStoriesToQuestion, reviewPracticeAnswer } from '../src/interview-utils.js';
+import { buildLikelyQuestions, extractStorySeeds, matchStoriesToQuestion, reviewPracticeAnswer } from '../src/interview-utils.js';
 import { buildCoachingPlan, weekStart } from '../src/coaching-utils.js';
 import { createDocx } from '../src/docx-utils.js';
 
@@ -863,6 +866,7 @@ async function renderJobDetail(editing = false) {
     setStatusElement(tailorStatus, 'Saving status...');
     try {
       await updateApplicationStatus(session.accessToken, job.id, next);
+      if (next === 'interviewing') { document.querySelector('[data-tab="interview"]')?.click(); await loadInterview(); }
       application.status = next;
       await renderJobList();
       if (selectedJobId !== job.id) {
@@ -979,6 +983,9 @@ async function renderDiscovery() {
   list.replaceChildren(emptyState('Loading discovery queue...'));
   try {
     const recommendations = await listDiscoveryRecommendations(session.accessToken);
+    const active = recommendations.filter((item) => ['new', 'seen'].includes(item.status));
+    const strong = active.filter((item) => item.recommendation_label === 'strong_match').length;
+    $('discoveryDigest').textContent = active.length ? `${active.length} role${active.length === 1 ? '' : 's'} waiting for review${strong ? `, including ${strong} strong match${strong === 1 ? '' : 'es'}` : ''}. Recommendations are user-imported and may no longer be open.` : 'No new recommendations this week.';
     list.replaceChildren();
     if (!recommendations.length) return list.appendChild(emptyState('No discoveries yet. Import a public job URL or paste a role above.'));
     for (const recommendation of recommendations) {
@@ -1058,6 +1065,8 @@ async function renderDiscovery() {
       });
 
       actions.appendChild(save);
+      const apply = document.createElement('button'); apply.type = 'button'; apply.className = 'primary'; apply.textContent = 'Track as Applied';
+      apply.addEventListener('click', async () => { if (!confirm('Mark this as applied in your tracker? This does not submit anything to the employer.')) return; apply.disabled = true; try { const tracked = await insertJob(session.accessToken, { url: job.source_url, title: job.title, company: job.company, jd_text: job.jd_text || '' }); await updateApplicationStatus(session.accessToken, tracked.id, 'applied'); await addDiscoveryFeedback(session.accessToken, job.id, { action: 'apply' }); await updateDiscoveryStatus(session.accessToken, recommendation.id, 'saved'); setStatus('discoveryStatus', 'Tracked as applied.', 'success'); await renderDiscovery(); } catch (err) { setStatus('discoveryStatus', `Error: ${err.message}`, 'error'); apply.disabled = false; } }); actions.appendChild(apply);
       card.append(title, meta, why, concernEl, actions);
       list.appendChild(card);
     }
@@ -1065,6 +1074,7 @@ async function renderDiscovery() {
     list.replaceChildren(emptyState(`Could not load discovery: ${err.message}`));
   }
 }
+$('showDiscoveryDigest').addEventListener('click', renderDiscovery);
 
 $('importDiscovery').addEventListener('click', async () => {
   const url = $('discoveryUrl').value.trim();
@@ -1073,8 +1083,10 @@ $('importDiscovery').addEventListener('click', async () => {
   try {
     if (!profilePreferences) profilePreferences = (await getProfilePreferences(session.accessToken)) || {};
     const job = { source_url: url, title: $('discoveryTitle').value.trim(), company: $('discoveryCompany').value.trim(), location: $('discoveryLocation').value.trim(), jd_text: $('discoveryDescription').value };
-    const recommendation = buildDiscoveryRecommendation({ job, preferences: profilePreferences });
-    await importDiscoveredJob(session.accessToken, job, recommendation);
+    const resume = await getLatestResume(session.accessToken);
+    const discovered = await resolveDiscoveredJob(session.accessToken, job);
+    const recommendation = buildDiscoveryRecommendation({ job: { ...job, first_seen_at: discovered.first_seen_at }, preferences: profilePreferences, resumeText: resume?.raw_text || '' });
+    await saveDiscoveryRecommendation(session.accessToken, discovered.id, recommendation);
     setStatus('discoveryStatus', 'Added to your discovery queue.', 'success');
     await renderDiscovery();
   } catch (err) { setStatus('discoveryStatus', `Error: ${err.message}`, 'error'); }
@@ -1137,6 +1149,8 @@ async function renderLikelyQuestions() {
       const matches = matchStoriesToQuestion(item.question, interviewStories);
       if (matches.length) { const hint = document.createElement('div'); hint.className = 'small'; hint.textContent = `Suggested story: ${matches[0].story.title} — ${matches[0].reason}`; list.appendChild(hint); }
     }
+    const checklist = await listInterviewChecklist(session.accessToken, jobId); const complete = new Map(checklist.map((item) => [item.item_key, item.completed])); const checklistList = $('interviewChecklist'); checklistList.replaceChildren();
+    for (const [key, label] of [['company_research', 'Research the company and role themes'], ['stories', 'Select and review your strongest stories'], ['questions', 'Prepare questions to ask the interviewer'], ['logistics', 'Confirm interview logistics']]) { const row = document.createElement('label'); row.className = 'filter-checkbox'; const box = document.createElement('input'); box.type = 'checkbox'; box.checked = Boolean(complete.get(key)); box.addEventListener('change', async () => { const previous = !box.checked; try { await saveInterviewChecklistItem(session.accessToken, jobId, key, box.checked); } catch (err) { box.checked = previous; setStatus('practiceStatus', `Could not save checklist item: ${err.message}`, 'error'); } }); row.append(box, document.createTextNode(label)); checklistList.appendChild(row); }
   } catch (err) { list.appendChild(emptyState(`Could not generate questions: ${err.message}`)); }
 }
 
@@ -1146,6 +1160,21 @@ $('saveStory').addEventListener('click', async () => {
     await saveInterviewStory(session.accessToken, { ...(editingStoryId ? { id: editingStoryId } : {}), title, situation: $('storySituation').value, task: $('storyTask').value, action: $('storyAction').value, result: $('storyResult').value, reflection: $('storyReflection').value, skills: csvValues($('storySkills').value), themes: csvValues($('storyThemes').value), source_type: 'user_created', confidence: 'user_confirmed', is_sensitive: $('storySensitive').checked });
     clearStoryForm(); setStatus('storyStatus', 'Story saved.', 'success'); await loadInterview();
   } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; }
+});
+// Cycles through the extracted seeds on repeated clicks instead of always
+// handing back the same one — extractStorySeeds is a pure function on the
+// same resume text, so [0] alone would never change.
+let nextSeedIndex = 0;
+$('seedStories').addEventListener('click', async () => {
+  try {
+    const resume = await getLatestResume(session.accessToken);
+    const seeds = extractStorySeeds(resume?.raw_text || '');
+    if (!seeds.length) return setStatus('storyStatus', 'No resume evidence was found to draft a story from.', 'error');
+    const seed = seeds[nextSeedIndex % seeds.length];
+    nextSeedIndex += 1;
+    startEditingStory(seed); editingStoryId = null; $('saveStory').textContent = 'Save Reviewed Story';
+    setStatus('storyStatus', `Draft ${(nextSeedIndex - 1) % seeds.length + 1} of ${seeds.length} created from your resume. Complete and verify it before saving.`, '');
+  } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); }
 });
 $('cancelStoryEdit').addEventListener('click', () => { clearStoryForm(); setStatus('storyStatus', ''); });
 $('interviewJob').addEventListener('change', renderLikelyQuestions);
@@ -1161,16 +1190,21 @@ async function renderCoach() {
     coachGoals = await getJobSearchGoals(session.accessToken);
     const goals = coachGoals || {}; $('goalApplications').value = goals.weekly_application_target ?? 3; $('goalNetworking').value = goals.weekly_networking_target ?? 1; $('goalPrep').value = goals.weekly_prep_target ?? 1; $('goalCapacity').value = goals.capacity_hours ?? 5; $('goalUrgency').value = goals.urgency || 'normal'; $('goalConstraints').value = goals.constraints || '';
     const jobs = await listJobs(session.accessToken); const plan = buildCoachingPlan({ jobs, goals, stories: interviewStories });
-    $('planAnalytics').textContent = `${plan.analytics.saved} saved · ${plan.analytics.applied} applied · ${plan.analytics.interviewing} interviewing · ${plan.analytics.overdue_follow_ups} overdue follow-ups${plan.analytics.interview_rate != null ? ` · ${plan.analytics.interview_rate}% current applied-to-interview rate` : ''}`;
+    $('planAnalytics').textContent = `${plan.analytics.saved} saved · ${plan.analytics.applied} applied · ${plan.analytics.interviewing} interviewing · ${plan.analytics.overdue_follow_ups} overdue follow-ups${plan.analytics.interview_rate != null ? ` · ${plan.analytics.interview_rate}% current applied-to-interview rate` : ''}${plan.analytics.by_title.length ? ` · by title: ${plan.analytics.by_title.map((item) => `${item.title} (${item.applied} applied, ${item.interviewing} interviewing)`).join('; ')}` : ''}${plan.analytics.by_source.length ? ` · by source: ${plan.analytics.by_source.map(([source, count]) => `${source} (${count})`).join(', ')}` : ''}`;
     const saved = await getWeeklyPlan(session.accessToken, weekStart()); renderPlanItems(saved?.weekly_plan_items || plan.items, plan.insights);
+    const reminders = await listCoachingReminders(session.accessToken); const reminderList = $('reminderList'); reminderList.replaceChildren();
+    for (const reminder of reminders) { const row = document.createElement('div'); row.className = 'card row'; const text = document.createElement('span'); text.className = 'grow'; text.textContent = `${reminder.message}${reminder.due_at ? ` · due ${reminder.due_at.slice(0, 10)}` : ''}`; const done = document.createElement('button'); done.type = 'button'; done.className = 'subtle'; done.textContent = 'Done'; done.addEventListener('click', async () => { await updateCoachingReminder(session.accessToken, reminder.id, { status: 'done' }); await renderCoach(); }); const snooze = document.createElement('button'); snooze.type = 'button'; snooze.className = 'subtle'; snooze.textContent = 'Snooze'; snooze.addEventListener('click', async () => { const due = new Date(Date.now() + 3 * 86400000).toISOString(); await updateCoachingReminder(session.accessToken, reminder.id, { status: 'snoozed', due_at: due }); await renderCoach(); }); const dismiss = document.createElement('button'); dismiss.type = 'button'; dismiss.className = 'subtle'; dismiss.textContent = 'Dismiss'; dismiss.addEventListener('click', async () => { await updateCoachingReminder(session.accessToken, reminder.id, { status: 'dismissed' }); await renderCoach(); }); row.append(text, done, snooze, dismiss); reminderList.appendChild(row); }
+    const retro = await getWeeklyRetrospective(session.accessToken, weekStart()); $('retroWorked').value = retro?.worked || ''; $('retroAdjust').value = retro?.adjust || ''; $('retroNote').value = retro?.note || '';
   } catch (err) { setStatus('planStatus', `Error: ${err.message}`, 'error'); }
 }
 function renderPlanItems(items, insights = []) {
-  const list = $('planItems'); list.replaceChildren(); for (const item of items) { const row = document.createElement('div'); row.className = 'card row'; const text = document.createElement('span'); text.className = 'grow'; text.textContent = item.description; row.appendChild(text); if (item.id) { const done = document.createElement('button'); done.type = 'button'; done.className = 'subtle'; done.textContent = item.status === 'done' ? 'Done' : 'Mark done'; done.disabled = item.status === 'done'; done.addEventListener('click', async () => { await updateWeeklyPlanItem(session.accessToken, item.id, { status: 'done', completed_count: item.target_count }); await renderCoach(); }); row.appendChild(done); } list.appendChild(row); }
+  const list = $('planItems'); list.replaceChildren(); for (const item of items) { const row = document.createElement('div'); row.className = 'card row'; const text = document.createElement('span'); text.className = 'grow'; text.textContent = item.description; row.appendChild(text); if (item.id) { const target = document.createElement('input'); target.type = 'number'; target.min = '0'; target.value = item.target_count; target.title = 'Target count'; target.style.width = '64px'; target.addEventListener('change', async () => { const previous = item.target_count; try { await updateWeeklyPlanItem(session.accessToken, item.id, { target_count: Number(target.value) || 0 }); } catch (err) { target.value = previous; setStatus('planStatus', `Could not save target: ${err.message}`, 'error'); } }); const done = document.createElement('button'); done.type = 'button'; done.className = 'subtle'; done.textContent = item.status === 'done' ? 'Done' : 'Mark done'; done.disabled = item.status === 'done'; done.addEventListener('click', async () => { await updateWeeklyPlanItem(session.accessToken, item.id, { status: 'done', completed_count: item.target_count }); await renderCoach(); }); row.append(target, done); } list.appendChild(row); }
   const insightList = $('planInsights'); insightList.replaceChildren(); for (const insight of insights) { const line = document.createElement('div'); line.className = 'small'; line.textContent = `Insight: ${insight.message}`; insightList.appendChild(line); }
 }
 $('saveGoals').addEventListener('click', async () => { const btn = $('saveGoals'); btn.disabled = true; try { coachGoals = await saveJobSearchGoals(session.accessToken, { weekly_application_target: Number($('goalApplications').value) || 0, weekly_networking_target: Number($('goalNetworking').value) || 0, weekly_prep_target: Number($('goalPrep').value) || 0, capacity_hours: Number($('goalCapacity').value) || 0, urgency: $('goalUrgency').value, constraints: $('goalConstraints').value.trim() || null }); setStatus('goalsStatus', 'Goals saved.', 'success'); await renderCoach(); } catch (err) { setStatus('goalsStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; } });
 $('generatePlan').addEventListener('click', async () => { const btn = $('generatePlan'); btn.disabled = true; try { const jobs = await listJobs(session.accessToken); const plan = buildCoachingPlan({ jobs, goals: coachGoals || {}, stories: interviewStories }); const existing = await getWeeklyPlan(session.accessToken, weekStart()); if (!existing) await saveWeeklyPlan(session.accessToken, { weekStart: weekStart(), summary: plan.summary, items: plan.items }); setStatus('planStatus', 'Weekly plan ready.', 'success'); await renderCoach(); } catch (err) { setStatus('planStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; } });
+$('addReminder').addEventListener('click', async () => { const message = $('reminderText').value.trim(); if (!message) return setStatus('planStatus', 'Enter a reminder.', 'error'); try { await saveCoachingReminder(session.accessToken, { reminder_type: 'manual', message, due_at: $('reminderDue').value ? new Date($('reminderDue').value).toISOString() : null }); $('reminderText').value = ''; $('reminderDue').value = ''; await renderCoach(); } catch (err) { setStatus('planStatus', `Error: ${err.message}`, 'error'); } });
+$('saveRetro').addEventListener('click', async () => { try { await saveWeeklyRetrospective(session.accessToken, { week_start: weekStart(), worked: $('retroWorked').value, adjust: $('retroAdjust').value, note: $('retroNote').value }); setStatus('planStatus', 'Retrospective saved.', 'success'); } catch (err) { setStatus('planStatus', `Error: ${err.message}`, 'error'); } });
 
 // ---- Resume ----
 // No versioning: the most recently saved resume is always what tailoring
@@ -1264,6 +1298,7 @@ async function loadPreferences() {
     $('targetLocations').value = (profilePreferences.target_locations || []).join(', ');
     $('industries').value = (profilePreferences.industries || []).join(', ');
     $('seniorityTargets').value = (profilePreferences.seniority_targets || []).join(', ');
+    $('companySizes').value = (profilePreferences.company_sizes || []).join(', ');
     $('remotePreference').value = profilePreferences.remote_preference || '';
     $('workAuthorization').value = profilePreferences.work_authorization || '';
     $('salaryMin').value = profilePreferences.salary_min ?? '';
@@ -1284,6 +1319,7 @@ $('savePreferences').addEventListener('click', async () => {
       target_locations: csvValues($('targetLocations').value),
       industries: csvValues($('industries').value),
       seniority_targets: csvValues($('seniorityTargets').value),
+      company_sizes: csvValues($('companySizes').value),
       remote_preference: $('remotePreference').value || null,
       work_authorization: $('workAuthorization').value.trim() || null,
       salary_min: $('salaryMin').value ? Number($('salaryMin').value) : null,

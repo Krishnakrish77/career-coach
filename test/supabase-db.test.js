@@ -15,6 +15,8 @@ import {
   saveOpportunityScorecard,
   addJobFeedback,
   listDiscoveryRecommendations,
+  resolveDiscoveredJob,
+  saveDiscoveryRecommendation,
   importDiscoveredJob,
   updateDiscoveryStatus,
   addDiscoveryFeedback,
@@ -27,6 +29,7 @@ import {
   extractResumeFromPdf,
   saveInterviewStory,
   saveWeeklyPlan,
+  listCoachingReminders,
 } from '../src/supabase-db.js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../src/supabase-auth.js';
 
@@ -50,7 +53,7 @@ test('listJobs requests a light column set, capped, newest first', async () => {
   assert.deepEqual(result, [{ id: '1' }]);
   assert.equal(
     calls[0].url,
-    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)&order=created_at.desc&limit=100`,
+    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,source,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)&order=created_at.desc&limit=100`,
   );
   assert.equal(calls[0].opts.headers.apikey, SUPABASE_ANON_KEY);
   assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');
@@ -277,26 +280,79 @@ test('listDiscoveryRecommendations requests the queue with its discovered job em
   assert.equal(result[0].id, 'rec-1');
 });
 
+const LONG_JD_TEXT = 'Detailed responsibilities and requirements for this role. '.repeat(3);
+
 test('importDiscoveredJob upserts the discovered job then its recommendation', async () => {
   const { fetchImpl, calls } = fetchSequence([
+    fakeResponse({ json: [] }),
     fakeResponse({ json: [{ id: 'discovered-1' }] }),
     fakeResponse({ json: [{ id: 'rec-1', recommendation_label: 'strong_match' }] }),
   ]);
-  const job = { source_url: 'https://acme.test/jobs/1', title: 'Engineer', company: 'Acme', jd_text: 'text' };
+  const job = { source_url: 'https://acme.test/jobs/1', title: 'Engineer', company: 'Acme', jd_text: LONG_JD_TEXT };
   const recommendation = { preference_fit_score: 80, job_quality_score: 90, recommendation_label: 'strong_match', reasoning: {} };
   const result = await importDiscoveredJob('token-1', job, recommendation, fetchImpl);
 
-  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/discovered_jobs?on_conflict=user_id,normalized_url`);
-  assert.equal(calls[0].opts.headers.prefer, 'resolution=merge-duplicates,return=representation');
-  const discoveredBody = JSON.parse(calls[0].opts.body);
+  assert.ok(calls[0].url.includes('content_hash=eq.'));
+  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/discovered_jobs?on_conflict=user_id,normalized_url`);
+  assert.equal(calls[1].opts.headers.prefer, 'resolution=merge-duplicates,return=representation');
+  const discoveredBody = JSON.parse(calls[1].opts.body);
   assert.equal(discoveredBody.normalized_url, 'acme.test/jobs/1');
   assert.equal(typeof discoveredBody.content_hash, 'string');
 
-  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/job_recommendations?on_conflict=user_id,discovered_job_id`);
-  assert.deepEqual(JSON.parse(calls[1].opts.body), { discovered_job_id: 'discovered-1', ...recommendation });
+  assert.equal(calls[2].url, `${SUPABASE_URL}/rest/v1/job_recommendations?on_conflict=user_id,discovered_job_id`);
+  assert.deepEqual(JSON.parse(calls[2].opts.body), { discovered_job_id: 'discovered-1', ...recommendation });
 
   assert.equal(result.discovered.id, 'discovered-1');
   assert.equal(result.recommendation.id, 'rec-1');
+});
+
+test('importDiscoveredJob reuses a matching content hash across repost URLs', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'existing' }] }), fakeResponse({ json: [{ id: 'rec' }] })]);
+  const result = await importDiscoveredJob('token-1', { source_url: 'https://b.test/job', jd_text: LONG_JD_TEXT }, { preference_fit_score: 50, job_quality_score: 50, recommendation_label: 'worth_reviewing' }, fetchImpl);
+  assert.ok(calls[0].url.includes('content_hash=eq.'));
+  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/job_recommendations?on_conflict=user_id,discovered_job_id`);
+  assert.equal(result.discovered.id, 'existing');
+});
+
+test('resolveDiscoveredJob skips the content-hash lookup for blank/short descriptions', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'discovered-1' }] })]);
+  await resolveDiscoveredJob('token-1', { source_url: 'https://acme.test/jobs/1', jd_text: '' }, fetchImpl);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/discovered_jobs?on_conflict=user_id,normalized_url`);
+});
+
+test('resolveDiscoveredJob never merges two different jobs that both lack a description', async () => {
+  // Regression test against a stateful fake backend: hashContent('') is a
+  // constant, so a buggy implementation that trusts content_hash on blank
+  // descriptions would incorrectly resolve both imports to the same row.
+  const rows = new Map();
+  let nextId = 1;
+  const fetchImpl = async (url, opts) => {
+    const parsed = new URL(url);
+    if (opts.method === 'POST') {
+      const body = JSON.parse(opts.body);
+      const row = { id: `row-${nextId++}`, ...body };
+      rows.set(row.id, row);
+      return fakeResponse({ json: [row] });
+    }
+    const hash = parsed.searchParams.get('content_hash')?.replace('eq.', '');
+    const match = [...rows.values()].find((row) => row.content_hash === hash);
+    return fakeResponse({ json: match ? [match] : [] });
+  };
+
+  const rowA = await resolveDiscoveredJob(
+    'token-1',
+    { source_url: 'https://acme.test/jobs/1', title: 'Backend Engineer', company: 'Acme', jd_text: '' },
+    fetchImpl,
+  );
+  const rowB = await resolveDiscoveredJob(
+    'token-1',
+    { source_url: 'https://widgetco.test/careers/2', title: 'Marketing Manager', company: 'WidgetCo', jd_text: '' },
+    fetchImpl,
+  );
+
+  assert.notEqual(rowA.id, rowB.id);
+  assert.equal(rowB.company, 'WidgetCo');
 });
 
 test('updateDiscoveryStatus PATCHes the recommendation row by id', async () => {
@@ -324,6 +380,14 @@ test('addDiscoveryFeedback treats skip/hide as negative sentiment', async () => 
   const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'feedback-1' }] })]);
   await addDiscoveryFeedback('token-1', 'discovered-1', { action: 'hide' }, fetchImpl);
   assert.equal(JSON.parse(calls[0].opts.body).sentiment, 'negative');
+});
+
+test('listCoachingReminders excludes snoozed reminders that are not yet due', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'reminder-1', status: 'open' }] })]);
+  await listCoachingReminders('token-1', fetchImpl);
+  const url = decodeURIComponent(calls[0].url);
+  assert.ok(url.includes('or=(status.eq.open,and(status.eq.snoozed,due_at.lte.'));
+  assert.equal(url.includes('status=in.(open,snoozed)'), false);
 });
 
 test('application packets are created with items but never submitted implicitly', async () => {
