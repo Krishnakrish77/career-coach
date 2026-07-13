@@ -8,7 +8,14 @@ export function buildCoachingPlan({ jobs = [], goals = {}, stories = [] } = {}) 
   const applications = jobs.map((job) => job.applications?.[0] || { status: 'saved' });
   const count = (status) => applications.filter((app) => app.status === status).length;
   const saved = count('saved'); const applied = count('applied'); const interviewing = count('interviewing');
-  const byTitle = Object.values(jobs.reduce((groups, job) => { const title = job.title || 'Untitled role'; const app = job.applications?.[0] || { status: 'saved' }; const bucket = groups[title] || { title, applied: 0, interviewing: 0 }; if (app.status === 'applied') bucket.applied += 1; if (app.status === 'interviewing') bucket.interviewing += 1; groups[title] = bucket; return groups; }, {})).slice(0, 5);
+  // Only titles with real applied/interviewing signal are worth surfacing —
+  // sorted by that signal, not by whichever titles happened to appear first
+  // in a recency-ordered job list, so a title with real activity is never
+  // silently dropped in favor of a just-saved role with none.
+  const byTitle = Object.values(jobs.reduce((groups, job) => { const title = job.title || 'Untitled role'; const app = job.applications?.[0] || { status: 'saved' }; const bucket = groups[title] || { title, applied: 0, interviewing: 0 }; if (app.status === 'applied') bucket.applied += 1; if (app.status === 'interviewing') bucket.interviewing += 1; groups[title] = bucket; return groups; }, {}))
+    .filter((bucket) => bucket.applied + bucket.interviewing > 0)
+    .sort((a, b) => (b.applied + b.interviewing) - (a.applied + a.interviewing))
+    .slice(0, 5);
   const bySource = Object.entries(jobs.reduce((groups, job) => { const key = job.source || 'manual'; groups[key] = (groups[key] || 0) + 1; return groups; }, {}));
   const overdue = applications.filter((app) => app.next_follow_up_at && new Date(app.next_follow_up_at) <= new Date()).length;
   const items = []; const insights = [];

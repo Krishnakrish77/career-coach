@@ -247,10 +247,18 @@ $('previewForm').addEventListener('click', async () => {
 
 $('fillForm').addEventListener('click', async () => {
   if (!formSuggestions.length || !confirm('Fill only the reviewed safe text fields? This never uploads files or submits.')) return;
-  const values = {}; for (const type of [...new Set(formSuggestions.map((field) => field.type))]) { const value = prompt(`Value for ${type} (leave blank to skip):`); if (value) values[type] = value; }
+  // Keyed by groupKey, not bare type — two fields of the same type (e.g.
+  // "First Name" and "Last Name", or two different essay questions) are
+  // prompted and filled separately rather than both getting one shared value.
+  const values = {};
+  for (const key of [...new Set(formSuggestions.map((field) => field.groupKey))]) {
+    const sample = formSuggestions.find((field) => field.groupKey === key);
+    const value = prompt(`Value for ${sample.type}${sample.label ? ` — "${sample.label}"` : ''} (leave blank to skip):`);
+    if (value) values[key] = value;
+  }
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const [{ result: changed }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, args: [formSuggestions, values], func: (suggestions, data) => { let count = 0; for (const field of suggestions) { const value = data[field.type]; if (!value) continue; const el = field.id ? document.getElementById(field.id) : document.querySelector(`[name="${CSS.escape(field.name || '')}"]`); if (!el || el.type === 'file' || el.matches('button,[type=submit],[type=checkbox],[type=radio]')) continue; el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); count += 1; } return count; } });
+    const [{ result: changed }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, args: [formSuggestions, values], func: (suggestions, data) => { let count = 0; for (const field of suggestions) { const value = data[field.groupKey]; if (!value) continue; const el = field.id ? document.getElementById(field.id) : document.querySelector(`[name="${CSS.escape(field.name || '')}"]`); if (!el || el.type === 'file' || el.matches('button,[type=submit],[type=checkbox],[type=radio]')) continue; el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); count += 1; } return count; } });
     $('formPreview').textContent = changed ? `Filled ${changed} reviewed field${changed === 1 ? '' : 's'}. Review every value before continuing.` : 'No field values were entered.';
   } catch (err) { $('formPreview').textContent = `Could not fill fields: ${err.message}`; }
 });

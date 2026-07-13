@@ -14,7 +14,8 @@ import {
   saveOpportunityScorecard,
   addJobFeedback,
   listDiscoveryRecommendations,
-  importDiscoveredJob,
+  resolveDiscoveredJob,
+  saveDiscoveryRecommendation,
   updateDiscoveryStatus,
   addDiscoveryFeedback,
   insertJob,
@@ -1083,8 +1084,9 @@ $('importDiscovery').addEventListener('click', async () => {
     if (!profilePreferences) profilePreferences = (await getProfilePreferences(session.accessToken)) || {};
     const job = { source_url: url, title: $('discoveryTitle').value.trim(), company: $('discoveryCompany').value.trim(), location: $('discoveryLocation').value.trim(), jd_text: $('discoveryDescription').value };
     const resume = await getLatestResume(session.accessToken);
-    const recommendation = buildDiscoveryRecommendation({ job, preferences: profilePreferences, resumeText: resume?.raw_text || '' });
-    await importDiscoveredJob(session.accessToken, job, recommendation);
+    const discovered = await resolveDiscoveredJob(session.accessToken, job);
+    const recommendation = buildDiscoveryRecommendation({ job: { ...job, first_seen_at: discovered.first_seen_at }, preferences: profilePreferences, resumeText: resume?.raw_text || '' });
+    await saveDiscoveryRecommendation(session.accessToken, discovered.id, recommendation);
     setStatus('discoveryStatus', 'Added to your discovery queue.', 'success');
     await renderDiscovery();
   } catch (err) { setStatus('discoveryStatus', `Error: ${err.message}`, 'error'); }
@@ -1148,7 +1150,7 @@ async function renderLikelyQuestions() {
       if (matches.length) { const hint = document.createElement('div'); hint.className = 'small'; hint.textContent = `Suggested story: ${matches[0].story.title} — ${matches[0].reason}`; list.appendChild(hint); }
     }
     const checklist = await listInterviewChecklist(session.accessToken, jobId); const complete = new Map(checklist.map((item) => [item.item_key, item.completed])); const checklistList = $('interviewChecklist'); checklistList.replaceChildren();
-    for (const [key, label] of [['company_research', 'Research the company and role themes'], ['stories', 'Select and review your strongest stories'], ['questions', 'Prepare questions to ask the interviewer'], ['logistics', 'Confirm interview logistics']]) { const row = document.createElement('label'); row.className = 'filter-checkbox'; const box = document.createElement('input'); box.type = 'checkbox'; box.checked = Boolean(complete.get(key)); box.addEventListener('change', async () => { await saveInterviewChecklistItem(session.accessToken, jobId, key, box.checked); }); row.append(box, document.createTextNode(label)); checklistList.appendChild(row); }
+    for (const [key, label] of [['company_research', 'Research the company and role themes'], ['stories', 'Select and review your strongest stories'], ['questions', 'Prepare questions to ask the interviewer'], ['logistics', 'Confirm interview logistics']]) { const row = document.createElement('label'); row.className = 'filter-checkbox'; const box = document.createElement('input'); box.type = 'checkbox'; box.checked = Boolean(complete.get(key)); box.addEventListener('change', async () => { const previous = !box.checked; try { await saveInterviewChecklistItem(session.accessToken, jobId, key, box.checked); } catch (err) { box.checked = previous; setStatus('practiceStatus', `Could not save checklist item: ${err.message}`, 'error'); } }); row.append(box, document.createTextNode(label)); checklistList.appendChild(row); }
   } catch (err) { list.appendChild(emptyState(`Could not generate questions: ${err.message}`)); }
 }
 
@@ -1159,7 +1161,21 @@ $('saveStory').addEventListener('click', async () => {
     clearStoryForm(); setStatus('storyStatus', 'Story saved.', 'success'); await loadInterview();
   } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; }
 });
-$('seedStories').addEventListener('click', async () => { try { const resume = await getLatestResume(session.accessToken); const seed = extractStorySeeds(resume?.raw_text || '')[0]; if (!seed) return setStatus('storyStatus', 'No resume evidence was found to draft a story from.', 'error'); startEditingStory(seed); editingStoryId = null; $('saveStory').textContent = 'Save Reviewed Story'; setStatus('storyStatus', 'Draft created from your resume. Complete and verify it before saving.', ''); } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); } });
+// Cycles through the extracted seeds on repeated clicks instead of always
+// handing back the same one — extractStorySeeds is a pure function on the
+// same resume text, so [0] alone would never change.
+let nextSeedIndex = 0;
+$('seedStories').addEventListener('click', async () => {
+  try {
+    const resume = await getLatestResume(session.accessToken);
+    const seeds = extractStorySeeds(resume?.raw_text || '');
+    if (!seeds.length) return setStatus('storyStatus', 'No resume evidence was found to draft a story from.', 'error');
+    const seed = seeds[nextSeedIndex % seeds.length];
+    nextSeedIndex += 1;
+    startEditingStory(seed); editingStoryId = null; $('saveStory').textContent = 'Save Reviewed Story';
+    setStatus('storyStatus', `Draft ${(nextSeedIndex - 1) % seeds.length + 1} of ${seeds.length} created from your resume. Complete and verify it before saving.`, '');
+  } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); }
+});
 $('cancelStoryEdit').addEventListener('click', () => { clearStoryForm(); setStatus('storyStatus', ''); });
 $('interviewJob').addEventListener('change', renderLikelyQuestions);
 $('reviewPractice').addEventListener('click', async () => {
@@ -1182,7 +1198,7 @@ async function renderCoach() {
   } catch (err) { setStatus('planStatus', `Error: ${err.message}`, 'error'); }
 }
 function renderPlanItems(items, insights = []) {
-  const list = $('planItems'); list.replaceChildren(); for (const item of items) { const row = document.createElement('div'); row.className = 'card row'; const text = document.createElement('span'); text.className = 'grow'; text.textContent = item.description; row.appendChild(text); if (item.id) { const target = document.createElement('input'); target.type = 'number'; target.min = '0'; target.value = item.target_count; target.title = 'Target count'; target.style.width = '64px'; target.addEventListener('change', async () => { await updateWeeklyPlanItem(session.accessToken, item.id, { target_count: Number(target.value) || 0 }); }); const done = document.createElement('button'); done.type = 'button'; done.className = 'subtle'; done.textContent = item.status === 'done' ? 'Done' : 'Mark done'; done.disabled = item.status === 'done'; done.addEventListener('click', async () => { await updateWeeklyPlanItem(session.accessToken, item.id, { status: 'done', completed_count: item.target_count }); await renderCoach(); }); row.append(target, done); } list.appendChild(row); }
+  const list = $('planItems'); list.replaceChildren(); for (const item of items) { const row = document.createElement('div'); row.className = 'card row'; const text = document.createElement('span'); text.className = 'grow'; text.textContent = item.description; row.appendChild(text); if (item.id) { const target = document.createElement('input'); target.type = 'number'; target.min = '0'; target.value = item.target_count; target.title = 'Target count'; target.style.width = '64px'; target.addEventListener('change', async () => { const previous = item.target_count; try { await updateWeeklyPlanItem(session.accessToken, item.id, { target_count: Number(target.value) || 0 }); } catch (err) { target.value = previous; setStatus('planStatus', `Could not save target: ${err.message}`, 'error'); } }); const done = document.createElement('button'); done.type = 'button'; done.className = 'subtle'; done.textContent = item.status === 'done' ? 'Done' : 'Mark done'; done.disabled = item.status === 'done'; done.addEventListener('click', async () => { await updateWeeklyPlanItem(session.accessToken, item.id, { status: 'done', completed_count: item.target_count }); await renderCoach(); }); row.append(target, done); } list.appendChild(row); }
   const insightList = $('planInsights'); insightList.replaceChildren(); for (const insight of insights) { const line = document.createElement('div'); line.className = 'small'; line.textContent = `Insight: ${insight.message}`; insightList.appendChild(line); }
 }
 $('saveGoals').addEventListener('click', async () => { const btn = $('saveGoals'); btn.disabled = true; try { coachGoals = await saveJobSearchGoals(session.accessToken, { weekly_application_target: Number($('goalApplications').value) || 0, weekly_networking_target: Number($('goalNetworking').value) || 0, weekly_prep_target: Number($('goalPrep').value) || 0, capacity_hours: Number($('goalCapacity').value) || 0, urgency: $('goalUrgency').value, constraints: $('goalConstraints').value.trim() || null }); setStatus('goalsStatus', 'Goals saved.', 'success'); await renderCoach(); } catch (err) { setStatus('goalsStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; } });

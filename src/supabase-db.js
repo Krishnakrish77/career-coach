@@ -231,21 +231,42 @@ export async function listDiscoveryRecommendations(accessToken, fetchImpl = fetc
   return restRequest('job_recommendations?select=*,discovered_jobs(*)&order=updated_at.desc&limit=100', accessToken, {}, fetchImpl);
 }
 
-export async function importDiscoveredJob(accessToken, job, recommendation, fetchImpl = fetch) {
+// Shorter/blank descriptions hash to a value shared by every other blank
+// import (hashContent('') is a constant) — below this length, a content-hash
+// match isn't distinctive enough to trust as "the same posting."
+const MIN_DEDUP_CONTENT_LENGTH = 80;
+
+// Resolves the discovered_jobs row for a posting — reusing an existing row
+// by content hash (only for meaningful-length descriptions) or by exact
+// normalized URL, rather than always creating a new one. Returns the real
+// row, including its actual first_seen_at, so callers can score freshness
+// before saving a recommendation against it.
+export async function resolveDiscoveredJob(accessToken, job, fetchImpl = fetch) {
   const normalized_url = normalizeUrl(job.source_url);
   const content_hash = await hashContent(job.jd_text);
-  // URL is the primary key, but public boards often repost the exact same
-  // description under a different URL. Reuse that private row when its text
-  // hash matches rather than presenting a duplicate recommendation.
-  const sameContent = content_hash ? await restRequest(`discovered_jobs?content_hash=eq.${content_hash}&select=*&limit=1`, accessToken, {}, fetchImpl) : [];
-  const discovered = sameContent[0] || (await restRequest('discovered_jobs?on_conflict=user_id,normalized_url', accessToken, {
+  const hasMeaningfulContent = (job.jd_text || '').trim().length >= MIN_DEDUP_CONTENT_LENGTH;
+  const sameContent = hasMeaningfulContent
+    ? await restRequest(`discovered_jobs?content_hash=eq.${content_hash}&select=*&limit=1`, accessToken, {}, fetchImpl)
+    : [];
+  if (sameContent[0]) return sameContent[0];
+  const [discovered] = await restRequest('discovered_jobs?on_conflict=user_id,normalized_url', accessToken, {
     method: 'POST', body: { ...job, normalized_url, content_hash, last_seen_at: new Date().toISOString() },
     extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
-  }, fetchImpl))[0];
+  }, fetchImpl);
+  return discovered;
+}
+
+export async function saveDiscoveryRecommendation(accessToken, discoveredJobId, recommendation, fetchImpl = fetch) {
   const [saved] = await restRequest('job_recommendations?on_conflict=user_id,discovered_job_id', accessToken, {
-    method: 'POST', body: { discovered_job_id: discovered.id, ...recommendation },
+    method: 'POST', body: { discovered_job_id: discoveredJobId, ...recommendation },
     extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
   }, fetchImpl);
+  return saved;
+}
+
+export async function importDiscoveredJob(accessToken, job, recommendation, fetchImpl = fetch) {
+  const discovered = await resolveDiscoveredJob(accessToken, job, fetchImpl);
+  const saved = await saveDiscoveryRecommendation(accessToken, discovered.id, recommendation, fetchImpl);
   return { discovered, recommendation: saved };
 }
 
@@ -371,8 +392,16 @@ export async function updateWeeklyPlanItem(accessToken, itemId, fields, fetchImp
   return item;
 }
 
+// A snoozed reminder should disappear until it's actually due again — not
+// just get pushed later in an always-visible list.
 export async function listCoachingReminders(accessToken, fetchImpl = fetch) {
-  return restRequest('coaching_reminders?select=*&status=in.(open,snoozed)&order=due_at.asc&limit=50', accessToken, {}, fetchImpl);
+  const now = encodeURIComponent(new Date().toISOString());
+  return restRequest(
+    `coaching_reminders?select=*&or=(status.eq.open,and(status.eq.snoozed,due_at.lte.${now}))&order=due_at.asc&limit=50`,
+    accessToken,
+    {},
+    fetchImpl,
+  );
 }
 export async function saveCoachingReminder(accessToken, reminder, fetchImpl = fetch) {
   const [saved] = await restRequest('coaching_reminders', accessToken, { method: 'POST', body: reminder, extraHeaders: { prefer: 'return=representation' } }, fetchImpl);

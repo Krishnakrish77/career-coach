@@ -15,7 +15,10 @@ export function buildDiscoveryRecommendation({ job = {}, preferences = {}, liked
   const jobWords = new Set(((job.jd_text || '').toLowerCase().match(/[a-z]{3,}/g) || []));
   const overlap = [...jobWords].filter((word) => resumeWords.has(word)).length;
   const resumeFit = resumeWords.size ? Math.min(100, overlap * 4) : null;
-  const ageDays = job.last_seen_at ? Math.max(0, (Date.now() - new Date(job.last_seen_at).getTime()) / 86400000) : 0;
+  // first_seen_at (not last_seen_at) — that's when this posting was first
+  // captured, so re-imports of a stale repost still read as stale rather
+  // than resetting to "fresh" just because it was touched again today.
+  const ageDays = job.first_seen_at ? Math.max(0, (Date.now() - new Date(job.first_seen_at).getTime()) / 86400000) : 0;
   const freshness = ageDays <= 3 ? 100 : ageDays <= 14 ? 70 : 35;
   const reasons = [];
   if (titleMatch) reasons.push('Matches a target title or alias.');
