@@ -34,6 +34,7 @@ import {
   getWeeklyPlan,
   saveWeeklyPlan,
   updateWeeklyPlanItem,
+  listCoachingReminders, saveCoachingReminder, updateCoachingReminder, getWeeklyRetrospective, saveWeeklyRetrospective,
 } from '../src/supabase-db.js';
 import { checkResumeHealth } from '../src/job-utils.js';
 import { buildOpportunityScorecard, recommendationLabel } from '../src/opportunity-utils.js';
@@ -1163,6 +1164,9 @@ async function renderCoach() {
     const jobs = await listJobs(session.accessToken); const plan = buildCoachingPlan({ jobs, goals, stories: interviewStories });
     $('planAnalytics').textContent = `${plan.analytics.saved} saved · ${plan.analytics.applied} applied · ${plan.analytics.interviewing} interviewing · ${plan.analytics.overdue_follow_ups} overdue follow-ups${plan.analytics.interview_rate != null ? ` · ${plan.analytics.interview_rate}% current applied-to-interview rate` : ''}`;
     const saved = await getWeeklyPlan(session.accessToken, weekStart()); renderPlanItems(saved?.weekly_plan_items || plan.items, plan.insights);
+    const reminders = await listCoachingReminders(session.accessToken); const reminderList = $('reminderList'); reminderList.replaceChildren();
+    for (const reminder of reminders) { const row = document.createElement('div'); row.className = 'card row'; const text = document.createElement('span'); text.className = 'grow'; text.textContent = `${reminder.message}${reminder.due_at ? ` · due ${reminder.due_at.slice(0, 10)}` : ''}`; const done = document.createElement('button'); done.type = 'button'; done.className = 'subtle'; done.textContent = 'Done'; done.addEventListener('click', async () => { await updateCoachingReminder(session.accessToken, reminder.id, { status: 'done' }); await renderCoach(); }); row.append(text, done); reminderList.appendChild(row); }
+    const retro = await getWeeklyRetrospective(session.accessToken, weekStart()); $('retroWorked').value = retro?.worked || ''; $('retroAdjust').value = retro?.adjust || ''; $('retroNote').value = retro?.note || '';
   } catch (err) { setStatus('planStatus', `Error: ${err.message}`, 'error'); }
 }
 function renderPlanItems(items, insights = []) {
@@ -1171,6 +1175,8 @@ function renderPlanItems(items, insights = []) {
 }
 $('saveGoals').addEventListener('click', async () => { const btn = $('saveGoals'); btn.disabled = true; try { coachGoals = await saveJobSearchGoals(session.accessToken, { weekly_application_target: Number($('goalApplications').value) || 0, weekly_networking_target: Number($('goalNetworking').value) || 0, weekly_prep_target: Number($('goalPrep').value) || 0, capacity_hours: Number($('goalCapacity').value) || 0, urgency: $('goalUrgency').value, constraints: $('goalConstraints').value.trim() || null }); setStatus('goalsStatus', 'Goals saved.', 'success'); await renderCoach(); } catch (err) { setStatus('goalsStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; } });
 $('generatePlan').addEventListener('click', async () => { const btn = $('generatePlan'); btn.disabled = true; try { const jobs = await listJobs(session.accessToken); const plan = buildCoachingPlan({ jobs, goals: coachGoals || {}, stories: interviewStories }); const existing = await getWeeklyPlan(session.accessToken, weekStart()); if (!existing) await saveWeeklyPlan(session.accessToken, { weekStart: weekStart(), summary: plan.summary, items: plan.items }); setStatus('planStatus', 'Weekly plan ready.', 'success'); await renderCoach(); } catch (err) { setStatus('planStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; } });
+$('addReminder').addEventListener('click', async () => { const message = $('reminderText').value.trim(); if (!message) return setStatus('planStatus', 'Enter a reminder.', 'error'); try { await saveCoachingReminder(session.accessToken, { reminder_type: 'manual', message, due_at: $('reminderDue').value ? new Date($('reminderDue').value).toISOString() : null }); $('reminderText').value = ''; $('reminderDue').value = ''; await renderCoach(); } catch (err) { setStatus('planStatus', `Error: ${err.message}`, 'error'); } });
+$('saveRetro').addEventListener('click', async () => { try { await saveWeeklyRetrospective(session.accessToken, { week_start: weekStart(), worked: $('retroWorked').value, adjust: $('retroAdjust').value, note: $('retroNote').value }); setStatus('planStatus', 'Retrospective saved.', 'success'); } catch (err) { setStatus('planStatus', `Error: ${err.message}`, 'error'); } });
 
 // ---- Resume ----
 // No versioning: the most recently saved resume is always what tailoring

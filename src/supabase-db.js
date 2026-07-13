@@ -367,6 +367,24 @@ export async function updateWeeklyPlanItem(accessToken, itemId, fields, fetchImp
   return item;
 }
 
+export async function listCoachingReminders(accessToken, fetchImpl = fetch) {
+  return restRequest('coaching_reminders?select=*&status=in.(open,snoozed)&order=due_at.asc&limit=50', accessToken, {}, fetchImpl);
+}
+export async function saveCoachingReminder(accessToken, reminder, fetchImpl = fetch) {
+  const [saved] = await restRequest('coaching_reminders', accessToken, { method: 'POST', body: reminder, extraHeaders: { prefer: 'return=representation' } }, fetchImpl);
+  return saved;
+}
+export async function updateCoachingReminder(accessToken, id, fields, fetchImpl = fetch) {
+  const [saved] = await restRequest(`coaching_reminders?id=eq.${id}`, accessToken, { method: 'PATCH', body: { ...fields, updated_at: new Date().toISOString() }, extraHeaders: { prefer: 'return=representation' } }, fetchImpl);
+  return saved;
+}
+export async function getWeeklyRetrospective(accessToken, week, fetchImpl = fetch) {
+  const rows = await restRequest(`weekly_retrospectives?week_start=eq.${week}&select=*&limit=1`, accessToken, {}, fetchImpl); return rows[0] || null;
+}
+export async function saveWeeklyRetrospective(accessToken, retrospective, fetchImpl = fetch) {
+  const [saved] = await restRequest('weekly_retrospectives?on_conflict=user_id,week_start', accessToken, { method: 'POST', body: retrospective, extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' } }, fetchImpl); return saved;
+}
+
 // RAW-6/RAW-7: history of tailoring generations for one job, newest first.
 export async function listJobArtifacts(accessToken, jobId, fetchImpl = fetch) {
   return restRequest(
