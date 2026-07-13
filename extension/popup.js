@@ -71,7 +71,12 @@ async function handleAuth(action, statusVerb) {
 
   setStatus('accountStatus', `${statusVerb}...`);
   try {
-    session = await action(email, password);
+    const result = await action(email, password);
+    if (result.pendingConfirmation) {
+      setStatus('accountStatus', 'Check your email to confirm your account, then log in.', 'success');
+      return;
+    }
+    session = result;
     await setStorage({ session });
     $('authPassword').value = '';
     setStatus('accountStatus', '');

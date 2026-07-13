@@ -91,12 +91,15 @@ async function callGemini(model: string, systemPrompt: string, userPrompt: strin
   return JSON.parse(data.candidates[0].content.parts[0].text);
 }
 
-// Model IDs below aren't backed by a live-verified catalog the way the Anthropic
-// ones are — double check against Google's current model list before relying on it.
+// Defaults are the cheapest/lightest model per provider on purpose (cost-
+// conscious default for testing/free-tier use) — not a capability
+// recommendation. Model IDs below aren't backed by a live-verified catalog
+// the way the Anthropic ones are — double check against Google's current
+// model list before relying on it.
 const DEFAULT_MODEL: Record<string, string> = {
-  anthropic: "claude-opus-4-8",
-  openai: "gpt-4o",
-  gemini: "gemini-2.5-pro",
+  anthropic: "claude-haiku-4-5",
+  openai: "gpt-4o-mini",
+  gemini: "gemini-2.5-flash",
 };
 
 // The client sends a model *preference*, but it must resolve to something on

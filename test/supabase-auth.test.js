@@ -44,6 +44,14 @@ test('signUp posts to /auth/v1/signup with the apikey header', async () => {
   assert.deepEqual(JSON.parse(capturedOpts.body), { email: 'a@example.com', password: 'pw' });
 });
 
+test('signUp signals pendingConfirmation instead of crashing when email confirmation is required', async () => {
+  // With enable_confirmations on, GoTrue's signup response has no access_token
+  // (and no usable .user) until the confirmation link is clicked.
+  const fetchImpl = async () => fakeResponse({ json: { id: 'user-1', email: 'a@example.com' } });
+  const result = await signUp('a@example.com', 'pw', fetchImpl);
+  assert.deepEqual(result, { pendingConfirmation: true });
+});
+
 test('signIn posts to the password grant endpoint', async () => {
   let capturedUrl;
   const fetchImpl = async (url) => {

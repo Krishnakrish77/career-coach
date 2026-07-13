@@ -22,8 +22,14 @@ export function toStoredSession(authResponse) {
   };
 }
 
+// With email confirmation required (the current live setting), signup
+// succeeds but returns no session until the link is clicked — access_token
+// is absent rather than the response being malformed. Signal that case
+// distinctly instead of crashing trying to build a session that doesn't exist yet.
 export async function signUp(email, password, fetchImpl = fetch) {
-  return toStoredSession(await authRequest('signup', { email, password }, fetchImpl));
+  const authResponse = await authRequest('signup', { email, password }, fetchImpl);
+  if (!authResponse.access_token) return { pendingConfirmation: true };
+  return toStoredSession(authResponse);
 }
 
 export async function signIn(email, password, fetchImpl = fetch) {

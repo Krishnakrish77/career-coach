@@ -3,7 +3,8 @@ import { getStorage, setStorage } from '../src/storage.js';
 import { listJobs, getJob, updateApplicationStatus, deleteJob, saveResume, getLatestResume, tailorJob } from '../src/supabase-db.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
-const DEFAULT_MODEL = { anthropic: 'claude-opus-4-8', openai: 'gpt-4o', gemini: 'gemini-2.5-pro' };
+// Cheapest/lightest model per provider — a cost-conscious default, not a capability pick.
+const DEFAULT_MODEL = { anthropic: 'claude-haiku-4-5', openai: 'gpt-4o-mini', gemini: 'gemini-2.5-flash' };
 const $ = (id) => document.getElementById(id);
 
 let session = null;
