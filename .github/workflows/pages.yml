@@ -1,12 +1,16 @@
 name: Deploy Pages
 
-# The published site is entirely under docs/, so source, migration, and
-# extension-only commits do not spend a Pages deployment.
+# The published site is docs/*.html + docs/assets/**, not the whole docs/
+# tree — docs/ also holds docs/prds/**.md and docs/tech-debt.md, which are
+# repo-internal planning docs, not site content. Scoping tightly here means
+# editing a PRD doesn't spend a Pages deployment, and those planning docs
+# don't end up served alongside the real site by upload-pages-artifact.
 on:
   push:
     branches: [main]
     paths:
-      - 'docs/**'
+      - 'docs/*.html'
+      - 'docs/assets/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -28,8 +32,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Stage site files
+        # Only the real site — docs/prds/**.md and docs/tech-debt.md are
+        # repo-internal planning docs and shouldn't be publicly served.
+        run: |
+          mkdir -p _site
+          cp docs/*.html _site/
+          cp -r docs/assets _site/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

@@ -148,7 +148,8 @@ git config core.hooksPath .githooks
 ## CI / releases
 
 - **CI** (`.github/workflows/ci.yml`) runs on PRs and pushes to `main` only — not every branch push, and not on docs/icon-only changes (`paths-ignore`). A new push to the same PR cancels the previous run in progress rather than letting a stale one finish. This is a backstop: the pre-push hook above should already catch most failures before they ever reach Actions.
-- **Supabase migrations** (`.github/workflows/supabase-migrations.yml`) runs when `supabase/migrations/**` or `supabase/config.toml` changes. PRs rebuild a local database from migrations and lint it; pushes to `main` apply pending migrations to the linked Supabase project. Configure repository secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, and `SUPABASE_DB_PASSWORD` before relying on the deploy step.
+- **Supabase migrations** (`.github/workflows/supabase-migrations.yml`) runs when `supabase/migrations/**` or `supabase/config.toml` changes. PRs preview the migration diff against the linked project with a dry run. After merge to `main`, pending migrations apply through the protected `production` environment, which should require an explicit deployment approval. Configure repository secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, and either a `SUPABASE_PROJECT_REF` repo variable or secret before relying on it.
+- **Pages** (`.github/workflows/pages.yml`) deploys `docs/*.html` and `docs/assets/**` to GitHub Pages whenever those change on `main` (or via manual `workflow_dispatch`). It stages only those files before upload, so `docs/prds/**` and `docs/tech-debt.md` — repo-internal planning docs, not site content — never get published and don't trigger a redeploy when edited.
 - **Releases** (`.github/workflows/release.yml`) only fire on a `v*` tag push — never on a normal commit. To cut one:
   ```
   # bump "version" in manifest.json and package.json to match, then:
