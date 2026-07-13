@@ -4,39 +4,61 @@
 <meta charset="utf-8">
 <title>Career Coach</title>
 <link rel="stylesheet" href="styles.css">
-<style>
-  body { width: 300px; padding: var(--space-3); }
-  .card + .card { margin-top: var(--space-2); }
-</style>
 </head>
-<body>
-  <h1 style="margin-bottom: var(--space-3);">Career Coach</h1>
+<body class="popup-body">
+  <div class="popup-shell">
+    <header class="popup-header">
+      <div>
+        <h1>Career Coach</h1>
+        <div class="small">Extension</div>
+      </div>
+    </header>
 
-  <div id="accountSignedOut" class="card stack">
-    <input id="authEmail" type="email" placeholder="you@example.com">
-    <input id="authPassword" type="password" placeholder="Password">
-    <div class="row">
-      <button id="signIn">Log in</button>
-      <button id="signUp">Sign up</button>
-    </div>
-  </div>
-  <div id="accountSignedIn" class="card row" style="display:none">
-    <div class="small">Signed in as <span id="accountEmail"></span></div>
-    <button id="signOut" style="flex: 0;">Log out</button>
-  </div>
-  <div id="accountStatus" class="small"></div>
+    <section id="accountSignedOut" class="panel account-card stack" aria-label="Account sign in">
+      <div class="panel-header">
+        <h2>Account</h2>
+      </div>
+      <label>Email
+        <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com">
+      </label>
+      <label>Password
+        <input id="authPassword" type="password" autocomplete="current-password" placeholder="Password">
+      </label>
+      <div class="row fill">
+        <button id="signIn" class="primary" type="button">Log in</button>
+        <button id="signUp" type="button">Sign up</button>
+      </div>
+    </section>
 
-  <div id="signedInActions" style="display:none">
-    <button id="captureJob" class="primary" style="width: 100%; margin-top: var(--space-3);">
-      Save current tab as job
-    </button>
-    <div id="captureStatus" class="small"></div>
+    <section id="accountSignedIn" class="panel account-summary" style="display:none" aria-label="Signed in account">
+      <div id="accountInitial" class="account-dot" aria-hidden="true"></div>
+      <div class="grow">
+        <div class="small">Signed in</div>
+        <div id="accountEmail" class="mini-job-title"></div>
+      </div>
+      <button id="signOut" class="subtle" type="button">Log out</button>
+    </section>
+    <div id="accountStatus" class="status-line" aria-live="polite"></div>
 
-    <div id="recentJobs" class="stack" style="margin-top: var(--space-3);"></div>
+    <section id="signedInActions" class="stack" style="display:none">
+      <div class="panel capture-panel stack">
+        <button id="captureJob" class="primary full-width" type="button">
+          Save current tab
+        </button>
+        <div id="captureStatus" class="status-line" aria-live="polite"></div>
+      </div>
 
-    <button id="openDashboard" style="width: 100%; margin-top: var(--space-3);">
-      Open dashboard →
-    </button>
+      <div class="stack compact">
+        <div class="panel-header">
+          <h2>Recent Jobs</h2>
+        </div>
+        <div id="recentJobs" class="recent-list stack compact"></div>
+      </div>
+
+      <button id="openDashboard" class="full-width" type="button">
+        Open Dashboard
+      </button>
+    </section>
   </div>
 
   <script type="module" src="popup.js"></script>

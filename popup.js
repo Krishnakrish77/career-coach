@@ -5,12 +5,44 @@ import { listJobs, insertJob } from './supabase-db.js';
 const $ = (id) => document.getElementById(id);
 let session = null;
 
+function setStatus(id, message, kind = '') {
+  const el = $(id);
+  el.textContent = message;
+  if (kind) el.dataset.kind = kind;
+  else delete el.dataset.kind;
+}
+
+function accountInitial(email) {
+  return (email || '?').trim().charAt(0).toUpperCase() || '?';
+}
+
+function hostFromUrl(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function popupEmptyState(text) {
+  const el = document.createElement('div');
+  el.className = 'empty-state popup-empty';
+  el.textContent = text;
+  return el;
+}
+
 // ---- Account ----
 function renderAccount() {
   $('accountSignedOut').style.display = session ? 'none' : '';
   $('accountSignedIn').style.display = session ? '' : 'none';
   $('signedInActions').style.display = session ? '' : 'none';
-  if (session) $('accountEmail').textContent = session.user.email;
+
+  if (session) {
+    $('accountEmail').textContent = session.user.email;
+    $('accountInitial').textContent = accountInitial(session.user.email);
+  } else {
+    $('recentJobs').innerHTML = '';
+  }
 }
 
 async function loadAccount() {
@@ -20,7 +52,8 @@ async function loadAccount() {
     renderAccount();
     return;
   }
-  // Refresh eagerly on popup open so a stale token doesn't surface as a
+
+  // Refresh eagerly on popup open so a stale token does not surface as a
   // confusing 401 the first time something tries to use it.
   session = await getValidSession(stored);
   if (session !== stored) await setStorage({ session });
@@ -31,16 +64,21 @@ async function loadAccount() {
 async function handleAuth(action, statusVerb) {
   const email = $('authEmail').value.trim();
   const password = $('authPassword').value;
-  $('accountStatus').textContent = `${statusVerb}…`;
+  if (!email || !password) {
+    setStatus('accountStatus', 'Enter an email and password.', 'error');
+    return;
+  }
+
+  setStatus('accountStatus', `${statusVerb}...`);
   try {
     session = await action(email, password);
     await setStorage({ session });
     $('authPassword').value = '';
-    $('accountStatus').textContent = '';
+    setStatus('accountStatus', '');
     renderAccount();
     renderRecentJobs();
   } catch (err) {
-    $('accountStatus').textContent = `Error: ${err.message}`;
+    setStatus('accountStatus', `Error: ${err.message}`, 'error');
   }
 }
 
@@ -49,49 +87,82 @@ $('signUp').addEventListener('click', () => handleAuth(signUp, 'Signing up'));
 $('signOut').addEventListener('click', async () => {
   await setStorage({ session: null });
   session = null;
+  setStatus('accountStatus', '');
+  setStatus('captureStatus', '');
   renderAccount();
 });
 
 // ---- Recent captures (read-only preview; full list lives in the dashboard) ----
-// job.title comes from the captured tab's <title> — arbitrary, untrusted web
-// content — so every dynamic field here is set via textContent/dataset, never
+// job.title comes from the captured tab's <title>: arbitrary, untrusted web
+// content. Dynamic fields here are set via textContent/dataset, never
 // interpolated into innerHTML.
 async function renderRecentJobs() {
-  const jobs = await listJobs(session.accessToken);
   const list = $('recentJobs');
   list.innerHTML = '';
+  list.appendChild(popupEmptyState('Loading jobs...'));
+
+  let jobs;
+  try {
+    jobs = await listJobs(session.accessToken);
+  } catch (err) {
+    list.innerHTML = '';
+    list.appendChild(popupEmptyState(`Could not load jobs: ${err.message}`));
+    return;
+  }
+
+  list.innerHTML = '';
+  if (jobs.length === 0) {
+    list.appendChild(popupEmptyState('No saved jobs yet.'));
+    return;
+  }
+
   for (const job of jobs.slice(0, 3)) {
     const status = (job.applications && job.applications[0]?.status) || 'saved';
 
     const card = document.createElement('div');
-    card.className = 'card';
-    card.style.padding = '6px 8px';
+    card.className = 'mini-job';
 
     const title = document.createElement('div');
-    title.className = 'small';
-    title.style.color = 'var(--text)';
-    title.textContent = job.title || job.url;
+    title.className = 'mini-job-title';
+    title.textContent = job.title || job.url || 'Untitled job';
+
+    const meta = document.createElement('div');
+    meta.className = 'mini-job-meta';
+
+    const host = document.createElement('span');
+    host.className = 'small';
+    host.textContent = job.company || hostFromUrl(job.url);
 
     const pill = document.createElement('span');
     pill.className = 'pill';
     pill.dataset.status = status;
     pill.textContent = status;
 
-    card.append(title, pill);
+    meta.append(host, pill);
+    card.append(title, meta);
     list.appendChild(card);
   }
 }
 
 $('captureJob').addEventListener('click', async () => {
   const btn = $('captureJob');
+  const originalText = btn.textContent;
   btn.disabled = true;
-  $('captureStatus').textContent = 'Saving…';
+  btn.textContent = 'Saving...';
+  btn.setAttribute('aria-busy', 'true');
+  setStatus('captureStatus', 'Reading current tab...');
+
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) {
-      $('captureStatus').textContent = 'No active tab found.';
+    if (!tab?.id) {
+      setStatus('captureStatus', 'No active tab found.', 'error');
       return;
     }
+    if (!/^https?:\/\//i.test(tab.url || '')) {
+      setStatus('captureStatus', 'Open a webpage before saving a job.', 'error');
+      return;
+    }
+
     const [{ result: pageText }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => document.body.innerText,
@@ -100,15 +171,17 @@ $('captureJob').addEventListener('click', async () => {
       url: tab.url,
       title: tab.title,
       company: null,
-      jd_text: pageText.slice(0, 12000),
+      jd_text: String(pageText || '').slice(0, 12000),
     });
     await renderRecentJobs();
-    $('captureStatus').textContent = 'Saved — open the dashboard to tailor it.';
-    setTimeout(() => ($('captureStatus').textContent = ''), 2500);
+    setStatus('captureStatus', 'Saved. Open the dashboard to tailor it.', 'success');
+    setTimeout(() => setStatus('captureStatus', ''), 2500);
   } catch (err) {
-    $('captureStatus').textContent = `Error: ${err.message}`;
+    setStatus('captureStatus', `Error: ${err.message}`, 'error');
   } finally {
     btn.disabled = false;
+    btn.textContent = originalText;
+    btn.removeAttribute('aria-busy');
   }
 });
 
