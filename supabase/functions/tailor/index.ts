@@ -177,9 +177,8 @@ export default {
 
     const { data: resume, error: resumeError } = await ctx.supabase
       .from("resumes")
-      .select("raw_text")
-      .order("created_at", { ascending: false })
-      .limit(1)
+      .select("id, raw_text")
+      .eq("is_active", true)
       .maybeSingle();
     if (resumeError) {
       return Response.json({ error: resumeError.message }, { status: 500 });
@@ -250,6 +249,28 @@ export default {
         },
         { onConflict: "user_id,job_id" },
       );
+
+    // RAW-6: each generation is kept as its own artifact (not just the latest
+    // upsert on applications) so the user can compare/reuse past outputs.
+    // Best-effort for the same reason as job_matches above.
+    await ctx.supabase.from("job_artifacts").insert([
+      {
+        job_id,
+        resume_version_id: resume.id,
+        artifact_type: "tailored_resume",
+        content: parsed.tailored_resume,
+        provider,
+        model: resolvedModel,
+      },
+      {
+        job_id,
+        resume_version_id: resume.id,
+        artifact_type: "cover_letter",
+        content: parsed.cover_letter,
+        provider,
+        model: resolvedModel,
+      },
+    ]);
 
     return Response.json(application);
   }),

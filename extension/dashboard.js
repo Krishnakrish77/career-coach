@@ -3,13 +3,19 @@ import { getStorage, setStorage } from '../src/storage.js';
 import {
   listJobs,
   getJob,
+  updateJob,
   updateApplicationStatus,
+  updateApplicationNotes,
   deleteJob,
-  saveResume,
-  getLatestResume,
+  listResumeVersions,
+  getActiveResume,
+  saveResumeVersion,
+  activateResumeVersion,
+  listJobArtifacts,
   tailorJob,
   extractResumeFromPdf,
 } from '../src/supabase-db.js';
+import { checkResumeHealth } from '../src/job-utils.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 // Cheapest/lightest model per provider — a cost-conscious default, not a capability pick.
@@ -19,6 +25,8 @@ const $ = (id) => document.getElementById(id);
 let session = null;
 let selectedJobId = null;
 let statusFilter = 'all';
+let searchFilter = '';
+let followUpDueOnly = false;
 
 function setStatusElement(el, message, kind = '') {
   el.textContent = message;
@@ -35,7 +43,50 @@ function labelForStatus(status) {
 }
 
 function applicationOf(job) {
-  return (job.applications && job.applications[0]) || { status: 'saved', tailored_resume: null, cover_letter: null };
+  return (
+    (job.applications && job.applications[0]) || {
+      status: 'saved',
+      tailored_resume: null,
+      cover_letter: null,
+      notes: null,
+      next_follow_up_at: null,
+    }
+  );
+}
+
+function isFollowUpDue(application) {
+  if (!application.next_follow_up_at) return false;
+  return new Date(application.next_follow_up_at).getTime() <= Date.now();
+}
+
+const QUALITY_LABELS = { complete: 'Complete', partial: 'Partial', needs_review: 'Needs review' };
+
+// 'complete' is the common case and would just be visual noise — only flag
+// captures that actually need attention.
+function createQualityPill(quality) {
+  if (!quality || quality === 'complete') return null;
+  const pill = document.createElement('span');
+  pill.className = 'pill';
+  pill.dataset.quality = quality;
+  pill.textContent = QUALITY_LABELS[quality] || quality;
+  return pill;
+}
+
+function toDateInputValue(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
+
+function labelForArtifactType(type) {
+  return type === 'cover_letter' ? 'Cover letter' : 'Tailored resume';
+}
+
+function labelWrap(text, inputEl) {
+  const label = document.createElement('label');
+  label.textContent = text;
+  label.appendChild(inputEl);
+  return label;
 }
 
 // null (not a stub object) when no score exists yet — every call site checks
@@ -141,7 +192,14 @@ async function renderJobList() {
     return;
   }
 
-  const filtered = statusFilter === 'all' ? jobs : jobs.filter((j) => applicationOf(j).status === statusFilter);
+  let filtered = statusFilter === 'all' ? jobs : jobs.filter((j) => applicationOf(j).status === statusFilter);
+  if (searchFilter) {
+    const q = searchFilter.toLowerCase();
+    filtered = filtered.filter((j) => (j.title || '').toLowerCase().includes(q) || (j.company || '').toLowerCase().includes(q));
+  }
+  if (followUpDueOnly) {
+    filtered = filtered.filter((j) => isFollowUpDue(applicationOf(j)));
+  }
   const selectedVisible = filtered.some((job) => job.id === selectedJobId);
   if (filtered.length > 0 && !selectedVisible) selectedJobId = filtered[0].id;
   if (filtered.length === 0) selectedJobId = null;
@@ -182,6 +240,8 @@ async function renderJobList() {
     top.appendChild(titleBlock);
     const gradeBadge = createGradeBadge(jobMatchOf(job));
     if (gradeBadge) top.appendChild(gradeBadge);
+    const qualityPill = createQualityPill(job.capture_quality);
+    if (qualityPill) top.appendChild(qualityPill);
     top.appendChild(createPill(application.status));
 
     const bottom = document.createElement('div');
@@ -210,7 +270,7 @@ function appendMeta(meta, text) {
   meta.appendChild(item);
 }
 
-async function renderJobDetail() {
+async function renderJobDetail(editing = false) {
   const detail = $('jobDetail');
   if (!selectedJobId) {
     detail.replaceChildren(emptyState('Select a job, or save one from the extension popup.'));
@@ -230,6 +290,15 @@ async function renderJobDetail() {
     selectedJobId = null;
     return renderJobDetail();
   }
+
+  // Best-effort — history is a nice-to-have, not worth failing the whole detail view over.
+  let artifacts = [];
+  try {
+    artifacts = await listJobArtifacts(session.accessToken, job.id);
+  } catch {
+    artifacts = [];
+  }
+
   const application = applicationOf(job);
 
   const card = document.createElement('article');
@@ -257,10 +326,13 @@ async function renderJobDetail() {
   const meta = document.createElement('div');
   meta.className = 'detail-meta small';
   appendMeta(meta, job.company);
+  appendMeta(meta, job.location);
   appendMeta(meta, hostFromUrl(job.url));
   const capturedText = formatDateTime(job.created_at);
   appendMeta(meta, capturedText ? `Captured ${capturedText}` : '');
   titleWrap.append(h2, meta);
+  const qualityPill = createQualityPill(job.capture_quality);
+  if (qualityPill) titleWrap.appendChild(qualityPill);
 
   const statusLabel = document.createElement('label');
   statusLabel.className = 'detail-status-label';
@@ -287,34 +359,102 @@ async function renderJobDetail() {
   tailorBtn.type = 'button';
   tailorBtn.textContent = application.tailored_resume ? 'Refresh Tailored Draft' : 'Tailor Resume + Cover Letter';
 
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'subtle';
+  editBtn.textContent = editing ? 'Cancel Edit' : 'Edit Details';
+
   const deleteBtn = document.createElement('button');
   deleteBtn.id = 'detailDelete';
   deleteBtn.className = 'danger';
   deleteBtn.type = 'button';
   deleteBtn.textContent = 'Delete';
 
-  actionsRow.append(tailorBtn, deleteBtn);
+  actionsRow.append(tailorBtn, editBtn, deleteBtn);
 
   const tailorStatus = document.createElement('div');
   tailorStatus.id = 'detailTailorStatus';
   tailorStatus.className = 'status-line';
   tailorStatus.setAttribute('aria-live', 'polite');
 
-  const jdSection = document.createElement('section');
-  jdSection.className = 'detail-section';
+  card.append(header, actionsRow, tailorStatus);
 
-  const jdHeader = document.createElement('div');
-  jdHeader.className = 'detail-section-header';
-  const jdTitle = document.createElement('h3');
-  jdTitle.textContent = 'Job Description';
-  jdHeader.appendChild(jdTitle);
+  // RAW-3: edit bad capture fields without losing the original source URL —
+  // url itself is never part of this form.
+  if (editing) {
+    const editSection = document.createElement('section');
+    editSection.className = 'detail-section edit-fields';
 
-  const jdText = document.createElement('div');
-  jdText.className = 'jd-text';
-  jdText.textContent = job.jd_text || 'No description captured.';
+    const titleInput = document.createElement('input');
+    titleInput.value = job.title || '';
+    titleInput.placeholder = 'Title';
 
-  jdSection.append(jdHeader, jdText);
-  card.append(header, actionsRow, tailorStatus, jdSection);
+    const companyInput = document.createElement('input');
+    companyInput.value = job.company || '';
+    companyInput.placeholder = 'Company';
+
+    const locationInput = document.createElement('input');
+    locationInput.value = job.location || '';
+    locationInput.placeholder = 'Location';
+
+    const jdTextarea = document.createElement('textarea');
+    jdTextarea.value = job.jd_text || '';
+    jdTextarea.placeholder = 'Job description';
+
+    const saveEditBtn = document.createElement('button');
+    saveEditBtn.type = 'button';
+    saveEditBtn.className = 'primary';
+    saveEditBtn.textContent = 'Save Details';
+
+    const editStatus = document.createElement('div');
+    editStatus.className = 'status-line';
+    editStatus.setAttribute('aria-live', 'polite');
+
+    saveEditBtn.addEventListener('click', async () => {
+      saveEditBtn.disabled = true;
+      setStatusElement(editStatus, 'Saving...');
+      try {
+        await updateJob(session.accessToken, job.id, {
+          url: job.url,
+          title: titleInput.value.trim(),
+          company: companyInput.value.trim(),
+          location: locationInput.value.trim(),
+          jd_text: jdTextarea.value,
+        });
+        await renderJobList();
+        await renderJobDetail(false);
+      } catch (err) {
+        setStatusElement(editStatus, `Error: ${err.message}`, 'error');
+        saveEditBtn.disabled = false;
+      }
+    });
+
+    editSection.append(
+      labelWrap('Title', titleInput),
+      labelWrap('Company', companyInput),
+      labelWrap('Location', locationInput),
+      labelWrap('Job description', jdTextarea),
+      saveEditBtn,
+      editStatus,
+    );
+    card.appendChild(editSection);
+  } else {
+    const jdSection = document.createElement('section');
+    jdSection.className = 'detail-section';
+
+    const jdHeader = document.createElement('div');
+    jdHeader.className = 'detail-section-header';
+    const jdTitle = document.createElement('h3');
+    jdTitle.textContent = 'Job Description';
+    jdHeader.appendChild(jdTitle);
+
+    const jdText = document.createElement('div');
+    jdText.className = 'jd-text';
+    jdText.textContent = job.jd_text || 'No description captured.';
+
+    jdSection.append(jdHeader, jdText);
+    card.appendChild(jdSection);
+  }
 
   const jobMatch = jobMatchOf(job);
   if (jobMatch) {
@@ -391,6 +531,98 @@ async function renderJobDetail() {
     card.appendChild(outputSection);
   }
 
+  // RAW-6/RAW-7: past generations, kept separate from the current output above.
+  if (artifacts.length > 0) {
+    const historySection = document.createElement('section');
+    historySection.className = 'detail-section';
+
+    const historyHeader = document.createElement('div');
+    historyHeader.className = 'detail-section-header';
+    const historyTitle = document.createElement('h3');
+    historyTitle.textContent = 'History';
+    historyHeader.appendChild(historyTitle);
+    historySection.appendChild(historyHeader);
+
+    for (const artifact of artifacts) {
+      const item = document.createElement('div');
+      item.className = 'artifact-item';
+
+      const itemHeader = document.createElement('div');
+      itemHeader.className = 'artifact-item-header';
+
+      const itemLabel = document.createElement('span');
+      itemLabel.className = 'small';
+      const when = formatDateTime(artifact.created_at);
+      itemLabel.textContent =
+        `${labelForArtifactType(artifact.artifact_type)}` +
+        `${when ? ' — ' + when : ''}${artifact.model ? ' (' + artifact.model + ')' : ''}`;
+
+      const copyArtifactBtn = document.createElement('button');
+      copyArtifactBtn.type = 'button';
+      copyArtifactBtn.className = 'subtle';
+      copyArtifactBtn.textContent = 'Copy';
+      copyArtifactBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(artifact.content);
+          setStatusElement(tailorStatus, 'Copied.', 'success');
+        } catch (err) {
+          setStatusElement(tailorStatus, `Could not copy: ${err.message}`, 'error');
+        }
+      });
+
+      itemHeader.append(itemLabel, copyArtifactBtn);
+      item.appendChild(itemHeader);
+      historySection.appendChild(item);
+    }
+
+    card.appendChild(historySection);
+  }
+
+  // RAW-8: follow-up tracking, so applied jobs don't decay silently.
+  const notesSection = document.createElement('section');
+  notesSection.className = 'detail-section stack';
+
+  const notesHeader = document.createElement('div');
+  notesHeader.className = 'detail-section-header';
+  const notesTitle = document.createElement('h3');
+  notesTitle.textContent = 'Notes & Follow-up';
+  notesHeader.appendChild(notesTitle);
+
+  const notesTextarea = document.createElement('textarea');
+  notesTextarea.value = application.notes || '';
+  notesTextarea.placeholder = 'Notes...';
+
+  const followUpInput = document.createElement('input');
+  followUpInput.type = 'date';
+  followUpInput.value = toDateInputValue(application.next_follow_up_at);
+
+  const saveNotesBtn = document.createElement('button');
+  saveNotesBtn.type = 'button';
+  saveNotesBtn.className = 'primary';
+  saveNotesBtn.textContent = 'Save Notes';
+
+  const notesStatus = document.createElement('div');
+  notesStatus.className = 'status-line';
+  notesStatus.setAttribute('aria-live', 'polite');
+
+  saveNotesBtn.addEventListener('click', async () => {
+    saveNotesBtn.disabled = true;
+    setStatusElement(notesStatus, 'Saving...');
+    try {
+      const nextFollowUpAt = followUpInput.value ? new Date(followUpInput.value).toISOString() : null;
+      await updateApplicationNotes(session.accessToken, job.id, { notes: notesTextarea.value, nextFollowUpAt });
+      setStatusElement(notesStatus, 'Saved.', 'success');
+      await renderJobList();
+    } catch (err) {
+      setStatusElement(notesStatus, `Error: ${err.message}`, 'error');
+    } finally {
+      saveNotesBtn.disabled = false;
+    }
+  });
+
+  notesSection.append(notesHeader, notesTextarea, labelWrap('Next follow-up', followUpInput), saveNotesBtn, notesStatus);
+  card.appendChild(notesSection);
+
   detail.replaceChildren(card);
 
   statusSelect.addEventListener('change', async (e) => {
@@ -417,6 +649,8 @@ async function renderJobDetail() {
       statusSelect.disabled = false;
     }
   });
+
+  editBtn.addEventListener('click', () => renderJobDetail(!editing));
 
   deleteBtn.addEventListener('click', async () => {
     if (!confirm('Delete this job?')) return;
@@ -473,11 +707,102 @@ $('filterStatus').addEventListener('change', async (e) => {
   await renderJobDetail();
 });
 
+let searchDebounceTimer = null;
+$('filterSearch').addEventListener('input', (e) => {
+  searchFilter = e.target.value.trim();
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(async () => {
+    await renderJobList();
+    await renderJobDetail();
+  }, 250);
+});
+
+$('filterFollowUpDue').addEventListener('change', async (e) => {
+  followUpDueOnly = e.target.checked;
+  await renderJobList();
+  await renderJobDetail();
+});
+
 // ---- Resume ----
+// Tracks where the text currently in the textarea came from, so "Save as New
+// Version" records accurate source metadata even though the field itself
+// isn't part of the resume text (RAW-4's source_type/source_filename).
+let pendingSourceType = 'text';
+let pendingSourceFilename = null;
+
+function renderHealthCheck(text) {
+  const container = $('resumeHealthStatus');
+  container.replaceChildren();
+  for (const issue of checkResumeHealth(text)) {
+    const line = document.createElement('div');
+    line.className = 'health-issue';
+    line.textContent = issue;
+    container.appendChild(line);
+  }
+}
+
+async function renderResumeVersions() {
+  const list = $('resumeVersionList');
+  list.replaceChildren();
+
+  let versions;
+  try {
+    versions = await listResumeVersions(session.accessToken);
+  } catch (err) {
+    list.appendChild(emptyState(`Could not load resume versions: ${err.message}`));
+    return;
+  }
+
+  if (versions.length === 0) {
+    list.appendChild(emptyState('No resume versions yet — save one below.'));
+    return;
+  }
+
+  for (const version of versions) {
+    const item = document.createElement('div');
+    item.className = 'resume-version-item';
+    item.dataset.active = version.is_active ? 'true' : 'false';
+
+    const label = document.createElement('span');
+    label.className = 'small';
+    const when = formatDateTime(version.created_at);
+    label.textContent = `${version.label || (version.source_type === 'pdf' ? 'Uploaded PDF' : 'Untitled version')}${when ? ' — ' + when : ''}`;
+
+    if (version.is_active) {
+      const activeTag = document.createElement('strong');
+      activeTag.textContent = 'Active';
+      item.append(label, activeTag);
+    } else {
+      const activateBtn = document.createElement('button');
+      activateBtn.type = 'button';
+      activateBtn.className = 'subtle';
+      activateBtn.textContent = 'Activate';
+      activateBtn.addEventListener('click', async () => {
+        activateBtn.disabled = true;
+        try {
+          await activateResumeVersion(session.accessToken, version.id);
+          await loadResume();
+          await renderResumeVersions();
+        } catch (err) {
+          setStatus('resumeStatus', `Error: ${err.message}`, 'error');
+          activateBtn.disabled = false;
+        }
+      });
+      item.append(label, activateBtn);
+    }
+
+    list.appendChild(item);
+  }
+}
+
 async function loadResume() {
   try {
-    const resume = await getLatestResume(session.accessToken);
+    const resume = await getActiveResume(session.accessToken);
     $('resumeText').value = resume ? resume.raw_text : '';
+    $('resumeLabel').value = '';
+    pendingSourceType = 'text';
+    pendingSourceFilename = null;
+    renderHealthCheck($('resumeText').value);
   } catch (err) {
     setStatus('resumeStatus', `Error: ${err.message}`, 'error');
   }
@@ -497,6 +822,8 @@ function readFileAsBase64(file) {
   });
 }
 
+$('resumeText').addEventListener('blur', (e) => renderHealthCheck(e.target.value));
+
 $('resumePdfInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -512,7 +839,10 @@ $('resumePdfInput').addEventListener('change', async (e) => {
     const base64 = await readFileAsBase64(file);
     const rawText = await extractResumeFromPdf(session.accessToken, base64);
     $('resumeText').value = rawText;
-    setStatus('resumePdfStatus', 'Extracted — review below, then click Save Resume.', 'success');
+    pendingSourceType = 'pdf';
+    pendingSourceFilename = file.name;
+    renderHealthCheck(rawText);
+    setStatus('resumePdfStatus', 'Extracted — review below, then save as a new version.', 'success');
   } catch (err) {
     setStatus('resumePdfStatus', `Error: ${err.message}`, 'error');
   } finally {
@@ -525,9 +855,18 @@ $('saveResume').addEventListener('click', async () => {
   btn.disabled = true;
   setStatus('resumeStatus', 'Saving...');
   try {
-    await saveResume(session.accessToken, $('resumeText').value);
+    await saveResumeVersion(session.accessToken, {
+      rawText: $('resumeText').value,
+      label: $('resumeLabel').value.trim() || null,
+      sourceType: pendingSourceType,
+      sourceFilename: pendingSourceFilename,
+    });
+    pendingSourceType = 'text';
+    pendingSourceFilename = null;
+    $('resumeLabel').value = '';
     setStatus('resumeStatus', 'Saved.', 'success');
     setTimeout(() => setStatus('resumeStatus', ''), 1500);
+    await renderResumeVersions();
   } catch (err) {
     setStatus('resumeStatus', `Error: ${err.message}`, 'error');
   } finally {
@@ -569,9 +908,12 @@ async function init() {
   }
 
   $('accountStatusNav').textContent = `Signed in as ${session.user.email}`;
+  const linkedJobId = new URLSearchParams(location.search).get('job');
+  if (linkedJobId) selectedJobId = linkedJobId;
   await renderJobList();
   await renderJobDetail();
   loadResume();
+  renderResumeVersions();
   loadSettings();
 }
 

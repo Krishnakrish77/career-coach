@@ -23,9 +23,18 @@
           <h2>Jobs</h2>
           <div id="jobsSummary" class="small"></div>
         </div>
-        <label class="status-filter">Status
-          <select id="filterStatus"></select>
-        </label>
+        <div class="row jobs-filters">
+          <label class="grow">Search
+            <input id="filterSearch" type="search" placeholder="Title or company">
+          </label>
+          <label class="status-filter">Status
+            <select id="filterStatus"></select>
+          </label>
+          <label class="filter-checkbox">
+            <input id="filterFollowUpDue" type="checkbox">
+            Follow-up due
+          </label>
+        </div>
       </div>
       <div class="jobs-layout">
         <aside class="job-list-panel" aria-label="Saved jobs">
@@ -42,15 +51,25 @@
         </div>
       </div>
       <div class="panel form-panel stack">
+        <div class="panel-header">
+          <h3>Versions</h3>
+        </div>
+        <div id="resumeVersionList" class="stack compact"></div>
+      </div>
+      <div class="panel form-panel stack">
         <label>Upload a PDF <span class="small">(extracts text — review before saving)</span>
           <input id="resumePdfInput" type="file" accept="application/pdf">
         </label>
         <div id="resumePdfStatus" class="status-line" aria-live="polite"></div>
+        <label>Label <span class="small">(optional — e.g. "After bootcamp")</span>
+          <input id="resumeLabel" placeholder="Version label">
+        </label>
         <label>Current resume
           <textarea id="resumeText" placeholder="Paste your resume text here, or upload a PDF above"></textarea>
         </label>
+        <div id="resumeHealthStatus" class="stack compact"></div>
         <div class="form-actions">
-          <button id="saveResume" class="primary" type="button">Save Resume</button>
+          <button id="saveResume" class="primary" type="button">Save as New Version</button>
           <div id="resumeStatus" class="status-line" aria-live="polite"></div>
         </div>
       </div>
