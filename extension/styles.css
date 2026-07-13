@@ -639,6 +639,13 @@ button.subtle {
   box-shadow: 0 1px 0 rgba(23, 32, 42, .02);
 }
 
+/* The input/select inside has no border of its own, so the focus ring goes on
+   the pill it sits in via :focus-within. */
+.jobs-filters > label:not(.filter-checkbox):focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
 .jobs-filters input,
 .jobs-filters select {
   min-height: 28px;
