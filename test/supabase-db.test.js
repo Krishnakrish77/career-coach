@@ -8,10 +8,8 @@ import {
   updateApplicationStatus,
   updateApplicationNotes,
   deleteJob,
-  listResumeVersions,
-  getActiveResume,
-  saveResumeVersion,
-  activateResumeVersion,
+  saveResume,
+  getLatestResume,
   listJobArtifacts,
   tailorJob,
   extractResumeFromPdf,
@@ -179,64 +177,25 @@ test('deleteJob issues a DELETE against the job id', async () => {
   assert.equal(result, null);
 });
 
-test('listResumeVersions returns all versions newest first', async () => {
-  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'r1', is_active: true }] })]);
-  const result = await listResumeVersions('token-1', fetchImpl);
-  assert.equal(
-    calls[0].url,
-    `${SUPABASE_URL}/rest/v1/resumes?select=id,label,source_type,source_filename,is_active,created_at&order=created_at.desc`,
-  );
-  assert.equal(result[0].id, 'r1');
-});
-
-test('getActiveResume returns the active version', async () => {
-  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ raw_text: 'active resume' }] })]);
-  const result = await getActiveResume('token-1', fetchImpl);
-  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/resumes?is_active=eq.true&select=id,raw_text,label,created_at&limit=1`);
-  assert.equal(result.raw_text, 'active resume');
-});
-
-test('getActiveResume returns null when there is no resume yet', async () => {
-  const { fetchImpl } = fetchSequence([fakeResponse({ json: [] })]);
-  const result = await getActiveResume('token-1', fetchImpl);
-  assert.equal(result, null);
-});
-
-test('saveResumeVersion inserts inactive then atomically activates through RPC', async () => {
-  const { fetchImpl, calls } = fetchSequence([
-    fakeResponse({ json: [{ id: 'r2', raw_text: 'v2', is_active: false }] }),
-    fakeResponse({ json: { id: 'r2', raw_text: 'v2', is_active: true } }),
-  ]);
-  const result = await saveResumeVersion(
-    'token-1',
-    { rawText: 'v2', label: 'After bootcamp', sourceType: 'pdf', sourceFilename: 'resume.pdf' },
-    fetchImpl,
-  );
-
+test('saveResume posts raw_text and returns the inserted row', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'r1', raw_text: 'my resume' }] })]);
+  const result = await saveResume('token-1', 'my resume', fetchImpl);
   assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/resumes`);
-  assert.deepEqual(JSON.parse(calls[1].opts.body), {
-    p_resume_id: 'r2',
-  });
-  assert.deepEqual(JSON.parse(calls[0].opts.body), {
-    raw_text: 'v2',
-    label: 'After bootcamp',
-    source_type: 'pdf',
-    source_filename: 'resume.pdf',
-    is_active: false,
-  });
-  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/rpc/activate_resume_version`);
-  assert.equal(result.id, 'r2');
-  assert.equal(result.is_active, true);
+  assert.deepEqual(JSON.parse(calls[0].opts.body), { raw_text: 'my resume' });
+  assert.equal(result.id, 'r1');
 });
 
-test('activateResumeVersion uses the atomic activation RPC', async () => {
-  const { fetchImpl, calls } = fetchSequence([
-    fakeResponse({ json: { id: 'r1', is_active: true } }),
-  ]);
-  const result = await activateResumeVersion('token-1', 'r1', fetchImpl);
-  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/rpc/activate_resume_version`);
-  assert.deepEqual(JSON.parse(calls[0].opts.body), { p_resume_id: 'r1' });
-  assert.equal(result.id, 'r1');
+test('getLatestResume returns the most recently saved row', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ raw_text: 'latest' }] })]);
+  const result = await getLatestResume('token-1', fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/resumes?select=id,raw_text,created_at&order=created_at.desc&limit=1`);
+  assert.equal(result.raw_text, 'latest');
+});
+
+test('getLatestResume returns null when there is no resume yet', async () => {
+  const { fetchImpl } = fetchSequence([fakeResponse({ json: [] })]);
+  const result = await getLatestResume('token-1', fetchImpl);
+  assert.equal(result, null);
 });
 
 test('listJobArtifacts requests history for one job, newest first', async () => {

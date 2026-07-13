@@ -560,22 +560,6 @@ button.subtle {
   gap: var(--space-2);
 }
 
-.resume-version-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-
-.resume-version-item[data-active="true"] {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
 .health-issue {
   font-size: 11px;
   color: var(--warning);
