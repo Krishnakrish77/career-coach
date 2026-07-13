@@ -122,6 +122,25 @@ supabase functions deploy tailor --use-api   # after any change to supabase/func
 
 To add a schema change: `supabase migration new <name>`, edit the generated SQL, then `supabase db push --password '...'`.
 
+**One-time setup after cloning** — run the test suite locally on every push, so most failures never reach GitHub Actions:
+```
+git config core.hooksPath .githooks
+```
+(`core.hooksPath` is a local git setting, not something git syncs on clone — every clone needs to run this once.)
+
+## CI / releases
+
+- **CI** (`.github/workflows/ci.yml`) runs on PRs and pushes to `main` only — not every branch push, and not on docs/icon-only changes (`paths-ignore`). A new push to the same PR cancels the previous run in progress rather than letting a stale one finish. This is a backstop: the pre-push hook above should already catch most failures before they ever reach Actions.
+- **Releases** (`.github/workflows/release.yml`) only fire on a `v*` tag push — never on a normal commit. To cut one:
+  ```
+  # bump "version" in manifest.json and package.json to match, then:
+  git add manifest.json package.json
+  git commit -m "Release vX.Y.Z"
+  git tag vX.Y.Z
+  git push && git push --tags
+  ```
+  This zips `manifest.json` + `extension/` + `icons/` + `src/` (excluding `test/`, `supabase/`, and this README) and attaches it to a new GitHub release — ready to upload to the Chrome Web Store as-is.
+
 ## Security notes
 
 - **API keys never reach the browser.** The `tailor` Edge Function holds the operator's LLM keys as secrets; the client only ever sends a provider/model *preference*.
