@@ -1,11 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildLikelyQuestions, matchStoriesToQuestion, reviewPracticeAnswer } from '../src/interview-utils.js';
+import { buildLikelyQuestions, extractStorySeeds, matchStoriesToQuestion, reviewPracticeAnswer } from '../src/interview-utils.js';
 
 test('interview helpers produce focused questions and exclude sensitive stories', () => {
   assert.ok(buildLikelyQuestions({ title: 'Product Manager', jd_text: 'lead stakeholders' }).length >= 3);
   const matches = matchStoriesToQuestion('Tell me about stakeholder leadership', [{ title: 'Stakeholder launch', skills: ['stakeholder leadership'], confidence: 'user_confirmed' }, { title: 'Private', is_sensitive: true, confidence: 'user_confirmed' }]);
   assert.equal(matches.length, 1);
+});
+
+test('resume story seeds remain review-required drafts', () => {
+  const seeds = extractStorySeeds('I led a cross-functional launch that improved onboarding conversion by 20 percent.');
+  assert.equal(seeds[0].confidence, 'needs_review');
 });
 
 test('practice feedback stays structural and evidence focused', () => {

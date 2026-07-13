@@ -41,7 +41,7 @@ import { checkResumeHealth } from '../src/job-utils.js';
 import { buildOpportunityScorecard, recommendationLabel } from '../src/opportunity-utils.js';
 import { createPacketDrafts } from '../src/packet-utils.js';
 import { buildDiscoveryRecommendation } from '../src/discovery-utils.js';
-import { buildLikelyQuestions, matchStoriesToQuestion, reviewPracticeAnswer } from '../src/interview-utils.js';
+import { buildLikelyQuestions, extractStorySeeds, matchStoriesToQuestion, reviewPracticeAnswer } from '../src/interview-utils.js';
 import { buildCoachingPlan, weekStart } from '../src/coaching-utils.js';
 import { createDocx } from '../src/docx-utils.js';
 
@@ -1155,6 +1155,7 @@ $('saveStory').addEventListener('click', async () => {
     clearStoryForm(); setStatus('storyStatus', 'Story saved.', 'success'); await loadInterview();
   } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; }
 });
+$('seedStories').addEventListener('click', async () => { try { const resume = await getLatestResume(session.accessToken); const seed = extractStorySeeds(resume?.raw_text || '')[0]; if (!seed) return setStatus('storyStatus', 'No resume evidence was found to draft a story from.', 'error'); startEditingStory(seed); editingStoryId = null; $('saveStory').textContent = 'Save Reviewed Story'; setStatus('storyStatus', 'Draft created from your resume. Complete and verify it before saving.', ''); } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); } });
 $('cancelStoryEdit').addEventListener('click', () => { clearStoryForm(); setStatus('storyStatus', ''); });
 $('interviewJob').addEventListener('change', renderLikelyQuestions);
 $('reviewPractice').addEventListener('click', async () => {
@@ -1169,7 +1170,7 @@ async function renderCoach() {
     coachGoals = await getJobSearchGoals(session.accessToken);
     const goals = coachGoals || {}; $('goalApplications').value = goals.weekly_application_target ?? 3; $('goalNetworking').value = goals.weekly_networking_target ?? 1; $('goalPrep').value = goals.weekly_prep_target ?? 1; $('goalCapacity').value = goals.capacity_hours ?? 5; $('goalUrgency').value = goals.urgency || 'normal'; $('goalConstraints').value = goals.constraints || '';
     const jobs = await listJobs(session.accessToken); const plan = buildCoachingPlan({ jobs, goals, stories: interviewStories });
-    $('planAnalytics').textContent = `${plan.analytics.saved} saved · ${plan.analytics.applied} applied · ${plan.analytics.interviewing} interviewing · ${plan.analytics.overdue_follow_ups} overdue follow-ups${plan.analytics.interview_rate != null ? ` · ${plan.analytics.interview_rate}% current applied-to-interview rate` : ''}`;
+    $('planAnalytics').textContent = `${plan.analytics.saved} saved · ${plan.analytics.applied} applied · ${plan.analytics.interviewing} interviewing · ${plan.analytics.overdue_follow_ups} overdue follow-ups${plan.analytics.interview_rate != null ? ` · ${plan.analytics.interview_rate}% current applied-to-interview rate` : ''}${plan.analytics.by_title.length ? ` · by title: ${plan.analytics.by_title.map((item) => `${item.title} (${item.applied} applied, ${item.interviewing} interviewing)`).join('; ')}` : ''}`;
     const saved = await getWeeklyPlan(session.accessToken, weekStart()); renderPlanItems(saved?.weekly_plan_items || plan.items, plan.insights);
     const reminders = await listCoachingReminders(session.accessToken); const reminderList = $('reminderList'); reminderList.replaceChildren();
     for (const reminder of reminders) { const row = document.createElement('div'); row.className = 'card row'; const text = document.createElement('span'); text.className = 'grow'; text.textContent = `${reminder.message}${reminder.due_at ? ` · due ${reminder.due_at.slice(0, 10)}` : ''}`; const done = document.createElement('button'); done.type = 'button'; done.className = 'subtle'; done.textContent = 'Done'; done.addEventListener('click', async () => { await updateCoachingReminder(session.accessToken, reminder.id, { status: 'done' }); await renderCoach(); }); row.append(text, done); reminderList.appendChild(row); }

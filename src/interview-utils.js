@@ -13,6 +13,12 @@ export function buildLikelyQuestions(job = {}) {
   return questions.slice(0, 5);
 }
 
+// Seeds are deliberately incomplete drafts. They extract no claims beyond the
+// supplied resume text and must be explicitly saved by the user before use.
+export function extractStorySeeds(resumeText = '') {
+  return String(resumeText).split(/\n+/).map((line) => line.trim()).filter((line) => line.length >= 45 && /\b(i|led|built|improved|delivered|managed|created)\b/i.test(line)).slice(0, 5).map((line, index) => ({ title: `Resume story draft ${index + 1}`, situation: line, task: '', action: '', result: '', reflection: '', confidence: 'needs_review', source_type: 'resume_seed' }));
+}
+
 export function matchStoriesToQuestion(question, stories = []) {
   const query = new Set(words(question));
   return stories.filter((story) => !story.is_sensitive && story.confidence === 'user_confirmed')
