@@ -1,6 +1,7 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
+import { gradeFromScore, validateAtsScore } from "./scoring.js";
 
 // The operator's own keys — never sent to the client, only used server-side.
 // Set via `supabase secrets set ANTHROPIC_API_KEY=...` / `OPENAI_API_KEY=...` / `GEMINI_API_KEY=...`.
@@ -22,14 +23,6 @@ const TAILOR_SCHEMA = {
   required: ["tailored_resume", "cover_letter", "ats_score", "matched_skills", "missing_skills", "ats_notes"],
   additionalProperties: false,
 };
-
-function gradeFromScore(score: number): string {
-  if (score >= 90) return "A";
-  if (score >= 80) return "B";
-  if (score >= 70) return "C";
-  if (score >= 60) return "D";
-  return "F";
-}
 
 async function callAnthropic(model: string, systemPrompt: string, userPrompt: string) {
   if (!ANTHROPIC_API_KEY) throw new Error("Anthropic isn't configured on this server (missing ANTHROPIC_API_KEY secret).");
@@ -217,6 +210,7 @@ export default {
     let parsed;
     try {
       parsed = await CALL_BY_PROVIDER[provider](resolvedModel, systemPrompt, userPrompt);
+      parsed.ats_score = validateAtsScore(parsed.ats_score);
     } catch (err) {
       return Response.json({ error: (err as Error).message }, { status: 502 });
     }
