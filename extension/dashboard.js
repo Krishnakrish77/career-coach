@@ -25,11 +25,23 @@ import {
   listJobArtifacts,
   tailorJob,
   extractResumeFromPdf,
+  listInterviewStories,
+  saveInterviewStory,
+  deleteInterviewStory,
+  saveInterviewPrepSession,
+  getJobSearchGoals,
+  saveJobSearchGoals,
+  getWeeklyPlan,
+  saveWeeklyPlan,
+  updateWeeklyPlanItem,
 } from '../src/supabase-db.js';
 import { checkResumeHealth } from '../src/job-utils.js';
 import { buildOpportunityScorecard, recommendationLabel } from '../src/opportunity-utils.js';
 import { createPacketDrafts } from '../src/packet-utils.js';
 import { buildDiscoveryRecommendation } from '../src/discovery-utils.js';
+import { buildLikelyQuestions, matchStoriesToQuestion, reviewPracticeAnswer } from '../src/interview-utils.js';
+import { buildCoachingPlan, weekStart } from '../src/coaching-utils.js';
+import { createDocx } from '../src/docx-utils.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 // Cheapest/lightest model per provider — a cost-conscious default, not a capability pick.
@@ -43,6 +55,10 @@ let searchFilter = '';
 let followUpDueOnly = false;
 let profilePreferences = null;
 let recommendationFilter = 'all';
+let interviewStories = [];
+let coachGoals = null;
+let selectedPracticeQuestion = '';
+let editingStoryId = null;
 
 function setStatusElement(el, message, kind = '') {
   el.textContent = message;
@@ -615,6 +631,23 @@ async function renderJobDetail(editing = false) {
       });
       packetSection.append(labelWrap(item.label || item.item_type, field), evidence, save);
     }
+    const exportText = items.map((item) => `${(item.label || item.item_type).toUpperCase()}\n\n${item.final_content ?? item.draft_content ?? ''}`).join('\n\n---\n\n');
+    const exportRow = document.createElement('div'); exportRow.className = 'detail-actions';
+    const copyPacket = document.createElement('button'); copyPacket.type = 'button'; copyPacket.className = 'subtle'; copyPacket.textContent = 'Copy Packet';
+    const textPacket = document.createElement('button'); textPacket.type = 'button'; textPacket.className = 'subtle'; textPacket.textContent = 'Download Text';
+    const docxPacket = document.createElement('button'); docxPacket.type = 'button'; docxPacket.className = 'subtle'; docxPacket.textContent = 'Download DOCX';
+    const printPacket = document.createElement('button'); printPacket.type = 'button'; printPacket.className = 'subtle'; printPacket.textContent = 'Print / Save PDF';
+    copyPacket.addEventListener('click', async () => { try { await navigator.clipboard.writeText(exportText); setStatusElement(packetStatus, 'Packet copied.', 'success'); } catch (err) { setStatusElement(packetStatus, `Could not copy: ${err.message}`, 'error'); } });
+    textPacket.addEventListener('click', () => {
+      const anchor = document.createElement('a'); anchor.href = URL.createObjectURL(new Blob([exportText], { type: 'text/plain' })); anchor.download = `${(job.title || 'application-packet').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.txt`; anchor.click(); setTimeout(() => URL.revokeObjectURL(anchor.href), 0);
+    });
+    docxPacket.addEventListener('click', () => { const anchor = document.createElement('a'); anchor.href = URL.createObjectURL(new Blob([createDocx(exportText)], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })); anchor.download = `${(job.title || 'application-packet').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.docx`; anchor.click(); setTimeout(() => URL.revokeObjectURL(anchor.href), 0); });
+    printPacket.addEventListener('click', () => {
+      const win = window.open('', '_blank'); if (!win) return setStatusElement(packetStatus, 'Allow pop-ups to print or save a PDF.', 'error');
+      win.opener = null;
+      win.document.title = `${job.title || 'Application'} packet`; const pre = win.document.createElement('pre'); pre.textContent = exportText; pre.style.whiteSpace = 'pre-wrap'; pre.style.font = '12pt system-ui'; win.document.body.appendChild(pre); win.print();
+    });
+    exportRow.append(copyPacket, textPacket, docxPacket, printPacket); packetSection.appendChild(exportRow);
     const submitted = packet.application_submissions?.[0];
     if (!submitted) {
       const confirmation = document.createElement('input'); confirmation.placeholder = 'Confirmation number or note (optional)';
@@ -1048,6 +1081,97 @@ $('importDiscovery').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 
+// ---- Interview acceleration (PRD 4) ----
+const STORY_TEXT_FIELDS = { storyTitle: 'title', storySituation: 'situation', storyTask: 'task', storyAction: 'action', storyResult: 'result', storyReflection: 'reflection' };
+
+function clearStoryForm() {
+  Object.keys(STORY_TEXT_FIELDS).forEach((id) => { $(id).value = ''; });
+  $('storySkills').value = ''; $('storyThemes').value = ''; $('storySensitive').checked = false;
+  editingStoryId = null; $('saveStory').textContent = 'Save Story'; $('cancelStoryEdit').style.display = 'none';
+}
+
+function startEditingStory(story) {
+  editingStoryId = story.id;
+  for (const [id, field] of Object.entries(STORY_TEXT_FIELDS)) $(id).value = story[field] || '';
+  $('storySkills').value = (story.skills || []).join(', ');
+  $('storyThemes').value = (story.themes || []).join(', ');
+  $('storySensitive').checked = Boolean(story.is_sensitive);
+  $('saveStory').textContent = 'Update Story'; $('cancelStoryEdit').style.display = '';
+  $('storyTitle').focus();
+}
+
+function renderStories() {
+  const list = $('storyList'); list.replaceChildren();
+  if (!interviewStories.length) return list.appendChild(emptyState('No stories yet. Add only real examples you are comfortable practicing.'));
+  for (const story of interviewStories) {
+    const card = document.createElement('div'); card.className = 'card stack compact';
+    const title = document.createElement('strong'); title.textContent = story.title;
+    const detail = document.createElement('div'); detail.className = 'small'; detail.textContent = `${story.skills?.join(', ') || 'No skills tagged'}${story.is_sensitive ? ' · private' : ''}`;
+    const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'subtle'; edit.textContent = 'Edit';
+    edit.addEventListener('click', () => startEditingStory(story));
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'subtle'; remove.textContent = 'Delete';
+    remove.addEventListener('click', async () => { if (!confirm('Delete this story?')) return; try { await deleteInterviewStory(session.accessToken, story.id); if (editingStoryId === story.id) clearStoryForm(); await loadInterview(); } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); } });
+    card.append(title, detail, edit, remove); list.appendChild(card);
+  }
+}
+
+async function loadInterview() {
+  try {
+    interviewStories = await listInterviewStories(session.accessToken); renderStories();
+    const jobs = await listJobs(session.accessToken); const select = $('interviewJob'); select.replaceChildren();
+    for (const job of jobs.filter((job) => applicationOf(job).status === 'interviewing' || job.id === selectedJobId)) { const option = document.createElement('option'); option.value = job.id; option.textContent = `${job.title || 'Untitled'} — ${job.company || 'Unknown company'}`; select.appendChild(option); }
+    if (!select.options.length) { const option = document.createElement('option'); option.textContent = 'Mark a saved job as interviewing to tailor questions'; option.value = ''; select.appendChild(option); }
+    await renderLikelyQuestions();
+  } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); }
+}
+
+async function renderLikelyQuestions() {
+  const list = $('likelyQuestions'); list.replaceChildren(); const jobId = $('interviewJob').value;
+  if (!jobId) return list.appendChild(emptyState('No interviewing job selected.'));
+  try {
+    const job = await getJob(session.accessToken, jobId);
+    for (const item of buildLikelyQuestions(job)) {
+      const card = document.createElement('button'); card.type = 'button'; card.className = 'card'; card.textContent = item.question;
+      card.title = item.reason; card.addEventListener('click', () => { selectedPracticeQuestion = item.question; $('practiceAnswer').focus(); setStatus('practiceStatus', `Practicing: ${item.question}`, ''); });
+      list.appendChild(card);
+      const matches = matchStoriesToQuestion(item.question, interviewStories);
+      if (matches.length) { const hint = document.createElement('div'); hint.className = 'small'; hint.textContent = `Suggested story: ${matches[0].story.title} — ${matches[0].reason}`; list.appendChild(hint); }
+    }
+  } catch (err) { list.appendChild(emptyState(`Could not generate questions: ${err.message}`)); }
+}
+
+$('saveStory').addEventListener('click', async () => {
+  const btn = $('saveStory'); const title = $('storyTitle').value.trim(); if (!title) return setStatus('storyStatus', 'Add a story title.', 'error');
+  btn.disabled = true; try {
+    await saveInterviewStory(session.accessToken, { ...(editingStoryId ? { id: editingStoryId } : {}), title, situation: $('storySituation').value, task: $('storyTask').value, action: $('storyAction').value, result: $('storyResult').value, reflection: $('storyReflection').value, skills: csvValues($('storySkills').value), themes: csvValues($('storyThemes').value), source_type: 'user_created', confidence: 'user_confirmed', is_sensitive: $('storySensitive').checked });
+    clearStoryForm(); setStatus('storyStatus', 'Story saved.', 'success'); await loadInterview();
+  } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; }
+});
+$('cancelStoryEdit').addEventListener('click', () => { clearStoryForm(); setStatus('storyStatus', ''); });
+$('interviewJob').addEventListener('change', renderLikelyQuestions);
+$('reviewPractice').addEventListener('click', async () => {
+  const question = selectedPracticeQuestion || 'Tell me about a relevant example.'; const answer = $('practiceAnswer').value; const feedback = reviewPracticeAnswer(answer, question); $('practiceFeedback').textContent = feedback.feedback.join(' ');
+  if (!answer.trim()) return;
+  try { await saveInterviewPrepSession(session.accessToken, { job_id: $('interviewJob').value || null, question, answer_text: answer, feedback }); setStatus('practiceStatus', 'Practice saved. Review the feedback before your interview.', 'success'); } catch (err) { setStatus('practiceStatus', `Error: ${err.message}`, 'error'); }
+});
+
+// ---- Guided search coach (PRD 5) ----
+async function renderCoach() {
+  try {
+    coachGoals = await getJobSearchGoals(session.accessToken);
+    const goals = coachGoals || {}; $('goalApplications').value = goals.weekly_application_target ?? 3; $('goalNetworking').value = goals.weekly_networking_target ?? 1; $('goalPrep').value = goals.weekly_prep_target ?? 1; $('goalCapacity').value = goals.capacity_hours ?? 5; $('goalUrgency').value = goals.urgency || 'normal'; $('goalConstraints').value = goals.constraints || '';
+    const jobs = await listJobs(session.accessToken); const plan = buildCoachingPlan({ jobs, goals, stories: interviewStories });
+    $('planAnalytics').textContent = `${plan.analytics.saved} saved · ${plan.analytics.applied} applied · ${plan.analytics.interviewing} interviewing · ${plan.analytics.overdue_follow_ups} overdue follow-ups${plan.analytics.interview_rate != null ? ` · ${plan.analytics.interview_rate}% current applied-to-interview rate` : ''}`;
+    const saved = await getWeeklyPlan(session.accessToken, weekStart()); renderPlanItems(saved?.weekly_plan_items || plan.items, plan.insights);
+  } catch (err) { setStatus('planStatus', `Error: ${err.message}`, 'error'); }
+}
+function renderPlanItems(items, insights = []) {
+  const list = $('planItems'); list.replaceChildren(); for (const item of items) { const row = document.createElement('div'); row.className = 'card row'; const text = document.createElement('span'); text.className = 'grow'; text.textContent = item.description; row.appendChild(text); if (item.id) { const done = document.createElement('button'); done.type = 'button'; done.className = 'subtle'; done.textContent = item.status === 'done' ? 'Done' : 'Mark done'; done.disabled = item.status === 'done'; done.addEventListener('click', async () => { await updateWeeklyPlanItem(session.accessToken, item.id, { status: 'done', completed_count: item.target_count }); await renderCoach(); }); row.appendChild(done); } list.appendChild(row); }
+  const insightList = $('planInsights'); insightList.replaceChildren(); for (const insight of insights) { const line = document.createElement('div'); line.className = 'small'; line.textContent = `Insight: ${insight.message}`; insightList.appendChild(line); }
+}
+$('saveGoals').addEventListener('click', async () => { const btn = $('saveGoals'); btn.disabled = true; try { coachGoals = await saveJobSearchGoals(session.accessToken, { weekly_application_target: Number($('goalApplications').value) || 0, weekly_networking_target: Number($('goalNetworking').value) || 0, weekly_prep_target: Number($('goalPrep').value) || 0, capacity_hours: Number($('goalCapacity').value) || 0, urgency: $('goalUrgency').value, constraints: $('goalConstraints').value.trim() || null }); setStatus('goalsStatus', 'Goals saved.', 'success'); await renderCoach(); } catch (err) { setStatus('goalsStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; } });
+$('generatePlan').addEventListener('click', async () => { const btn = $('generatePlan'); btn.disabled = true; try { const jobs = await listJobs(session.accessToken); const plan = buildCoachingPlan({ jobs, goals: coachGoals || {}, stories: interviewStories }); const existing = await getWeeklyPlan(session.accessToken, weekStart()); if (!existing) await saveWeeklyPlan(session.accessToken, { weekStart: weekStart(), summary: plan.summary, items: plan.items }); setStatus('planStatus', 'Weekly plan ready.', 'success'); await renderCoach(); } catch (err) { setStatus('planStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; } });
+
 // ---- Resume ----
 // No versioning: the most recently saved resume is always what tailoring
 // uses. Health check is still shown so bad captures get flagged either way.
@@ -1136,6 +1260,10 @@ async function loadPreferences() {
   try {
     profilePreferences = (await getProfilePreferences(session.accessToken)) || {};
     $('targetTitles').value = (profilePreferences.target_titles || []).join(', ');
+    $('titleAliases').value = (profilePreferences.title_aliases || []).join(', ');
+    $('targetLocations').value = (profilePreferences.target_locations || []).join(', ');
+    $('industries').value = (profilePreferences.industries || []).join(', ');
+    $('seniorityTargets').value = (profilePreferences.seniority_targets || []).join(', ');
     $('remotePreference').value = profilePreferences.remote_preference || '';
     $('workAuthorization').value = profilePreferences.work_authorization || '';
     $('salaryMin').value = profilePreferences.salary_min ?? '';
@@ -1152,6 +1280,10 @@ $('savePreferences').addEventListener('click', async () => {
   try {
     profilePreferences = await saveProfilePreferences(session.accessToken, {
       target_titles: csvValues($('targetTitles').value),
+      title_aliases: csvValues($('titleAliases').value),
+      target_locations: csvValues($('targetLocations').value),
+      industries: csvValues($('industries').value),
+      seniority_targets: csvValues($('seniorityTargets').value),
       remote_preference: $('remotePreference').value || null,
       work_authorization: $('workAuthorization').value.trim() || null,
       salary_min: $('salaryMin').value ? Number($('salaryMin').value) : null,
@@ -1206,6 +1338,8 @@ async function init() {
   loadResume();
   loadPreferences();
   loadSettings();
+  await loadInterview();
+  await renderCoach();
 }
 
 init();

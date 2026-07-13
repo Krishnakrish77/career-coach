@@ -25,6 +25,8 @@ import {
   listJobArtifacts,
   tailorJob,
   extractResumeFromPdf,
+  saveInterviewStory,
+  saveWeeklyPlan,
 } from '../src/supabase-db.js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../src/supabase-auth.js';
 
@@ -217,6 +219,31 @@ test('profile preferences are merged into the private profile row', async () => 
   assert.equal(calls[0].opts.headers.prefer, 'resolution=merge-duplicates,return=representation');
   assert.equal(JSON.parse(calls[0].opts.body).remote_preference, 'remote');
   assert.deepEqual(result.target_titles, ['Engineer']);
+});
+
+test('interview stories save through the private story-bank endpoint', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'story-1' }] })]);
+  await saveInterviewStory('token-1', { title: 'Launch', skills: ['leadership'] }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/interview_stories`);
+  assert.equal(calls[0].opts.method, 'POST');
+  assert.equal(JSON.parse(calls[0].opts.body).title, 'Launch');
+});
+
+test('saveInterviewStory PATCHes an existing story by id instead of creating a new one', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'story-1', title: 'Launch v2' }] })]);
+  const result = await saveInterviewStory('token-1', { id: 'story-1', title: 'Launch v2', skills: ['leadership'] }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/interview_stories?id=eq.story-1`);
+  assert.equal(calls[0].opts.method, 'PATCH');
+  assert.equal(JSON.parse(calls[0].opts.body).id, undefined);
+  assert.equal(result.title, 'Launch v2');
+});
+
+test('weekly plan saves its header and user-owned items separately', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'plan-1' }] }), fakeResponse({ json: [] })]);
+  await saveWeeklyPlan('token-1', { weekStart: '2026-07-13', summary: 'Focus', items: [{ item_type: 'apply', description: 'Apply', target_count: 2 }] }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/weekly_plans?on_conflict=user_id,week_start`);
+  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/weekly_plan_items`);
+  assert.equal(JSON.parse(calls[1].opts.body)[0].weekly_plan_id, 'plan-1');
 });
 
 test('opportunity scorecard persists individual factors and explanation', async () => {

@@ -11,6 +11,8 @@
     <nav class="tabs" aria-label="Dashboard views">
       <button class="tab active" type="button" data-tab="jobs">Jobs</button>
       <button class="tab" type="button" data-tab="discovery">Discovery</button>
+      <button class="tab" type="button" data-tab="interview">Interview Prep</button>
+      <button class="tab" type="button" data-tab="coach">Weekly Plan</button>
       <button class="tab" type="button" data-tab="resume">Resume</button>
       <button class="tab" type="button" data-tab="settings">Settings</button>
     </nav>
@@ -90,6 +92,51 @@
       </div>
     </section>
 
+    <section id="interviewView" class="view">
+      <div class="view-toolbar"><div class="toolbar-copy"><h2>Interview Prep</h2><div class="small">Preparation only — never use this during a live interview.</div></div></div>
+      <div class="jobs-layout">
+        <section class="panel form-panel stack">
+          <h3>Story bank</h3>
+          <label>Story title <input id="storyTitle" placeholder="Turning around a delayed launch"></label>
+          <label>Situation <textarea id="storySituation"></textarea></label>
+          <label>Task <textarea id="storyTask"></textarea></label>
+          <label>Action <textarea id="storyAction"></textarea></label>
+          <label>Result <textarea id="storyResult"></textarea></label>
+          <label>Reflection <textarea id="storyReflection"></textarea></label>
+          <label>Skills <input id="storySkills" placeholder="stakeholder management, analytics"></label>
+          <label>Themes <input id="storyThemes" placeholder="leadership, execution"></label>
+          <label class="filter-checkbox"><input id="storySensitive" type="checkbox"> Sensitive/private — exclude from suggestions</label>
+          <button id="saveStory" class="primary" type="button">Save Story</button><button id="cancelStoryEdit" class="subtle" type="button" style="display:none">Cancel Edit</button><div id="storyStatus" class="status-line" aria-live="polite"></div>
+          <div id="storyList" class="stack compact"></div>
+        </section>
+        <section class="panel form-panel stack">
+          <h3>Practice for a saved job</h3>
+          <label>Job <select id="interviewJob"></select></label>
+          <div id="likelyQuestions" class="stack compact"></div>
+          <label>Your timed practice answer <textarea id="practiceAnswer" placeholder="Practice in advance. Use a clear situation, action, and verified result."></textarea></label>
+          <button id="reviewPractice" class="primary" type="button">Review & Save Practice</button><div id="practiceStatus" class="status-line" aria-live="polite"></div>
+          <div id="practiceFeedback" class="small"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="coachView" class="view">
+      <div class="view-toolbar"><div class="toolbar-copy"><h2>Weekly Plan</h2><div class="small">A small, editable set of next actions based on your own tracker.</div></div></div>
+      <div class="jobs-layout">
+        <section class="panel form-panel stack">
+          <h3>Goals</h3>
+          <label>Weekly application target <input id="goalApplications" type="number" min="0" value="3"></label>
+          <label>Weekly networking target <input id="goalNetworking" type="number" min="0" value="1"></label>
+          <label>Weekly interview-prep target <input id="goalPrep" type="number" min="0" value="1"></label>
+          <label>Capacity hours <input id="goalCapacity" type="number" min="0" step="0.5" value="5"></label>
+          <label>Urgency <select id="goalUrgency"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></label>
+          <label>Constraints <textarea id="goalConstraints" placeholder="Time, location, or other constraints"></textarea></label>
+          <button id="saveGoals" class="primary" type="button">Save Goals</button><div id="goalsStatus" class="status-line" aria-live="polite"></div>
+        </section>
+        <section class="panel form-panel stack"><h3>This week</h3><div id="planAnalytics" class="small"></div><div id="planItems" class="stack"></div><div id="planInsights" class="stack compact"></div><button id="generatePlan" class="primary" type="button">Generate Weekly Plan</button><div id="planStatus" class="status-line" aria-live="polite"></div></section>
+      </div>
+    </section>
+
     <section id="settingsView" class="view">
       <div class="view-toolbar">
         <div class="toolbar-copy">
@@ -101,6 +148,10 @@
         <label>Target titles <span class="small">(comma-separated)</span>
           <input id="targetTitles" placeholder="Product Manager, Program Manager">
         </label>
+        <label>Title aliases <span class="small">(comma-separated)</span><input id="titleAliases" placeholder="Product Owner, Growth PM"></label>
+        <label>Target locations <span class="small">(comma-separated)</span><input id="targetLocations" placeholder="Remote, Bengaluru"></label>
+        <label>Target industries <span class="small">(comma-separated)</span><input id="industries" placeholder="SaaS, Fintech"></label>
+        <label>Seniority targets <span class="small">(comma-separated)</span><input id="seniorityTargets" placeholder="Mid, Senior"></label>
         <label>Work preference
           <select id="remotePreference">
             <option value="">No preference</option>

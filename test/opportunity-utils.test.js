@@ -19,6 +19,19 @@ test('scorecard uses saved preferences and maps strong evidence to apply now', (
   assert.equal(card.factors.length, 7);
 });
 
+test('seniority_fit considers seniority_targets even without a target title match', () => {
+  const seniorityFactor = (preferences) =>
+    buildOpportunityScorecard({ job: { title: 'Senior Product Manager', jd_text: 'x'.repeat(300) }, preferences }).factors.find(
+      (factor) => factor.key === 'seniority_fit',
+    );
+
+  assert.equal(seniorityFactor({}).confidence, 'low');
+  assert.equal(seniorityFactor({ seniority_targets: ['Senior'] }).score, 100);
+  assert.equal(seniorityFactor({ seniority_targets: ['Junior'] }).score, 45);
+  // One of two signals matches (seniority yes, title no) — a partial, not a full, fit.
+  assert.equal(seniorityFactor({ target_titles: ['Engineer'], seniority_targets: ['Senior'] }).score, 70);
+});
+
 test('scorecard defaults uncertain inputs to needs review', () => {
   const card = buildOpportunityScorecard({ job: { title: 'Role', url: 'https://x.test', jd_text: 'Short description.' } });
   assert.equal(card.recommendation, 'needs_review');
