@@ -6,23 +6,28 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body class="dashboard-body">
+  <a class="skip-link" href="#dashboardContent">Skip to workspace</a>
   <header class="topnav">
-    <h1>Career Coach</h1>
-    <nav class="tabs" aria-label="Dashboard views">
-      <button class="tab active" type="button" data-tab="jobs">Jobs</button>
-      <button class="tab" type="button" data-tab="discovery">Discovery</button>
-      <button class="tab" type="button" data-tab="interview">Interview Prep</button>
-      <button class="tab" type="button" data-tab="coach">Weekly Plan</button>
-      <button class="tab" type="button" data-tab="resume">Resume</button>
-      <button class="tab" type="button" data-tab="settings">Settings</button>
+    <a class="brand" href="#dashboardContent" aria-label="Career Coach workspace">
+      <img class="brand-mark" src="assets/career-coach-mark.svg" width="40" height="40" alt="">
+      <span class="brand-copy"><strong>Career Coach</strong><span>Job search workspace</span></span>
+    </a>
+    <nav class="tabs" aria-label="Workspace views" role="tablist">
+      <button id="jobsTab" class="tab active" type="button" data-tab="jobs" role="tab" aria-controls="jobsView" aria-selected="true">Jobs</button>
+      <button id="discoveryTab" class="tab" type="button" data-tab="discovery" role="tab" aria-controls="discoveryView" aria-selected="false">Discovery</button>
+      <button id="interviewTab" class="tab" type="button" data-tab="interview" role="tab" aria-controls="interviewView" aria-selected="false">Interview Prep</button>
+      <button id="coachTab" class="tab" type="button" data-tab="coach" role="tab" aria-controls="coachView" aria-selected="false">Weekly Plan</button>
+      <button id="resumeTab" class="tab" type="button" data-tab="resume" role="tab" aria-controls="resumeView" aria-selected="false">Resume</button>
+      <button id="settingsTab" class="tab" type="button" data-tab="settings" role="tab" aria-controls="settingsView" aria-selected="false">Settings</button>
     </nav>
-    <div id="accountStatusNav" class="small account-status-nav"></div>
+    <div id="accountStatusNav" class="account-status-nav" aria-live="polite"></div>
   </header>
 
-  <main class="dashboard-shell">
-    <section id="jobsView" class="view active">
+  <main id="dashboardContent" class="dashboard-shell" tabindex="-1">
+    <section id="jobsView" class="view active" role="tabpanel" aria-labelledby="jobsTab">
       <div class="view-toolbar">
         <div class="toolbar-copy">
+          <span class="eyebrow">Application tracker</span>
           <h2>Jobs</h2>
           <div id="jobsSummary" class="small"></div>
         </div>
@@ -56,8 +61,8 @@
       </div>
     </section>
 
-    <section id="discoveryView" class="view">
-      <div class="view-toolbar"><div class="toolbar-copy"><h2>Discovery</h2><div class="small">Import roles you find; recommendations stay separate until you save one.</div></div></div>
+    <section id="discoveryView" class="view" role="tabpanel" aria-labelledby="discoveryTab">
+      <div class="view-toolbar"><div class="toolbar-copy"><span class="eyebrow">Opportunity inbox</span><h2>Discovery</h2><div class="small">Import roles you find; recommendations stay separate until you save one.</div></div></div>
       <div class="panel form-panel stack"><div class="row"><h3 class="grow">This week’s digest</h3><button id="showDiscoveryDigest" class="subtle" type="button">Refresh digest</button></div><div id="discoveryDigest" class="small"></div></div>
       <div class="panel form-panel stack">
         <h3>Import a job to review</h3>
@@ -71,9 +76,10 @@
       <div id="discoveryList" class="stack"></div>
     </section>
 
-    <section id="resumeView" class="view">
+    <section id="resumeView" class="view" role="tabpanel" aria-labelledby="resumeTab">
       <div class="view-toolbar">
         <div class="toolbar-copy">
+          <span class="eyebrow">Source of truth</span>
           <h2>Resume</h2>
         </div>
       </div>
@@ -93,8 +99,8 @@
       </div>
     </section>
 
-    <section id="interviewView" class="view">
-      <div class="view-toolbar"><div class="toolbar-copy"><h2>Interview Prep</h2><div class="small">Preparation only — never use this during a live interview.</div></div></div>
+    <section id="interviewView" class="view" role="tabpanel" aria-labelledby="interviewTab">
+      <div class="view-toolbar"><div class="toolbar-copy"><span class="eyebrow">Practice space</span><h2>Interview Prep</h2><div class="small">Preparation only — never use this during a live interview.</div></div></div>
       <div class="jobs-layout">
         <section class="panel form-panel stack">
           <h3>Story bank</h3>
@@ -122,8 +128,8 @@
       </div>
     </section>
 
-    <section id="coachView" class="view">
-      <div class="view-toolbar"><div class="toolbar-copy"><h2>Weekly Plan</h2><div class="small">A small, editable set of next actions based on your own tracker.</div></div></div>
+    <section id="coachView" class="view" role="tabpanel" aria-labelledby="coachTab">
+      <div class="view-toolbar"><div class="toolbar-copy"><span class="eyebrow">Momentum</span><h2>Weekly Plan</h2><div class="small">A small, editable set of next actions based on your own tracker.</div></div></div>
       <div class="jobs-layout">
         <section class="panel form-panel stack">
           <h3>Goals</h3>
@@ -139,9 +145,10 @@
       </div>
     </section>
 
-    <section id="settingsView" class="view">
+    <section id="settingsView" class="view" role="tabpanel" aria-labelledby="settingsTab">
       <div class="view-toolbar">
         <div class="toolbar-copy">
+          <span class="eyebrow">Personalize your workspace</span>
           <h2>Settings</h2>
         </div>
       </div>
