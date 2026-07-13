@@ -10,6 +10,14 @@ import {
   deleteJob,
   saveResume,
   getLatestResume,
+  getProfilePreferences,
+  saveProfilePreferences,
+  saveOpportunityScorecard,
+  addJobFeedback,
+  createApplicationPacket,
+  getApplicationPacket,
+  updateApplicationPacketItem,
+  submitApplicationPacket,
   listJobArtifacts,
   tailorJob,
   extractResumeFromPdf,
@@ -36,7 +44,7 @@ test('listJobs requests a light column set, capped, newest first', async () => {
   assert.deepEqual(result, [{ id: '1' }]);
   assert.equal(
     calls[0].url,
-    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score)&order=created_at.desc&limit=100`,
+    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)&order=created_at.desc&limit=100`,
   );
   assert.equal(calls[0].opts.headers.apikey, SUPABASE_ANON_KEY);
   assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');
@@ -196,6 +204,55 @@ test('getLatestResume returns null when there is no resume yet', async () => {
   const { fetchImpl } = fetchSequence([fakeResponse({ json: [] })]);
   const result = await getLatestResume('token-1', fetchImpl);
   assert.equal(result, null);
+});
+
+test('profile preferences are merged into the private profile row', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ target_titles: ['Engineer'] }] })]);
+  const result = await saveProfilePreferences('token-1', { target_titles: ['Engineer'], remote_preference: 'remote' }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/profiles?on_conflict=user_id`);
+  assert.equal(calls[0].opts.headers.prefer, 'resolution=merge-duplicates,return=representation');
+  assert.equal(JSON.parse(calls[0].opts.body).remote_preference, 'remote');
+  assert.deepEqual(result.target_titles, ['Engineer']);
+});
+
+test('opportunity scorecard persists individual factors and explanation', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ recommendation: 'apply_now' }] })]);
+  const scorecard = {
+    overall_score: 80, recommendation: 'apply_now', confidence: 'medium',
+    factors: [{ key: 'must_have_skills', score: 90 }, { key: 'seniority_fit', score: 80 }, { key: 'location_fit', score: 70 }, { key: 'compensation_fit', score: 60 }, { key: 'job_quality', score: 95 }],
+  };
+  await saveOpportunityScorecard('token-1', 'job-1', scorecard, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/job_matches?on_conflict=user_id,job_id`);
+  const body = JSON.parse(calls[0].opts.body);
+  assert.equal(body.job_id, 'job-1');
+  assert.equal(body.job_quality_score, 95);
+  assert.equal(body.recommendation, 'apply_now');
+});
+
+test('job feedback is an explicit user action', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'feedback-1' }] })]);
+  await addJobFeedback('token-1', 'job-1', { actionTaken: 'skipped', reason: 'location' }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/job_feedback`);
+  assert.deepEqual(JSON.parse(calls[0].opts.body), { job_id: 'job-1', action_taken: 'skipped', reason: 'location' });
+});
+
+test('application packets are created with items but never submitted implicitly', async () => {
+  const { fetchImpl, calls } = fetchSequence([
+    fakeResponse({ json: [{ id: 'packet-1' }] }),
+    fakeResponse({ noContent: true }),
+  ]);
+  await createApplicationPacket('token-1', { jobId: 'job-1', resumeId: 'resume-1', items: [{ item_type: 'cover_letter', label: 'Cover letter', draft_content: 'draft' }] }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/application_packets?on_conflict=user_id,job_id`);
+  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/application_packet_items?on_conflict=packet_id,item_type,label`);
+  assert.equal(JSON.parse(calls[1].opts.body)[0].packet_id, 'packet-1');
+});
+
+test('packet submission explicitly creates a submission then marks packet submitted', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'submission-1' }] }), fakeResponse({ json: [{ status: 'submitted' }] })]);
+  await submitApplicationPacket('token-1', 'packet-1', { confirmationText: 'ABC', followUpAt: null }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/application_submissions?on_conflict=packet_id`);
+  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/application_packets?id=eq.packet-1`);
+  assert.equal(JSON.parse(calls[1].opts.body).status, 'submitted');
 });
 
 test('listJobArtifacts requests history for one job, newest first', async () => {

@@ -17,9 +17,10 @@ The product should not optimize for the highest number of applications. The mark
 | 0 | [Market Research and Product Strategy](00-market-research-and-product-strategy.md) | Aligns roadmap to real job-seeker pain and competitive context. | Defines the product bets before implementation. |
 | 1 | [Reliable Application Workspace](01-reliable-application-workspace.md) | Makes the current capture, resume, tailoring, scoring, and tracking loop dependable. | Reliability is the base layer for every later feature. |
 | 2 | [Opportunity Triage and Job Quality](02-opportunity-triage-and-job-quality.md) | Helps users choose the jobs most worth their time and avoid low-quality or suspicious postings. | Users need prioritization before more automation. |
-| 3 | [Application Packet and Assisted Apply](03-application-packet-and-assisted-apply.md) | Turns a saved job into a complete, reviewable application packet with export and assisted form fill. | Builds on reliable job and resume data to reduce execution time. |
-| 4 | [Interview Acceleration](04-interview-acceleration.md) | Converts applications into interview readiness through story banking, role-specific prep, and practice. | The product needs to improve outcomes after application submission, not stop at documents. |
-| 5 | [Guided Search Coach](05-guided-search-coach.md) | Creates a weekly search plan, feedback loop, and sustainable operating cadence for users. | Uses accumulated job, application, and outcome data to guide behavior. |
+| 3 | [Job Discovery and Preference Learning](06-job-discovery-and-preference-learning.md) | Finds better candidate jobs and learns from roles the user likes, saves, skips, and applies to. | Discovery should use triage and preferences before application automation scales. |
+| 4 | [Application Packet and Assisted Apply](03-application-packet-and-assisted-apply.md) | Turns a saved job into a complete, reviewable application packet with export and assisted form fill. | Builds on reliable job and resume data to reduce execution time. |
+| 5 | [Interview Acceleration](04-interview-acceleration.md) | Converts applications into interview readiness through story banking, role-specific prep, and practice. | The product needs to improve outcomes after application submission, not stop at documents. |
+| 6 | [Guided Search Coach](05-guided-search-coach.md) | Creates a weekly search plan, feedback loop, and sustainable operating cadence for users. | Uses accumulated job, application, and outcome data to guide behavior. |
 
 ## Strategic Bets
 
@@ -27,7 +28,8 @@ The product should not optimize for the highest number of applications. The mark
 2. **Decision support is the wedge.** Resume tailoring is crowded. Career Coach can differentiate by helping users decide whether a posting is worth applying to before spending effort.
 3. **Browser-native context matters.** The extension already observes the job page at the point of intent. That creates an advantage over generic resume builders if the workflow is fast and trustworthy.
 4. **Trust is a product feature.** The product should explain recommendations, avoid fabricating experience, never auto-submit applications, and keep users in control.
-5. **Interview conversion is the real outcome.** Application counts are activity metrics. The roadmap should optimize application-to-interview conversion and qualified pipeline movement.
+5. **Preference learning should stay explicit.** The product should learn from jobs users like, save, skip, and apply to, but it must show why those signals affect future recommendations.
+6. **Interview conversion is the real outcome.** Application counts are activity metrics. The roadmap should optimize application-to-interview conversion and qualified pipeline movement.
 
 ## North Star And Supporting Metrics
 
@@ -46,6 +48,7 @@ Supporting metrics:
 - Time from job capture to ready-to-submit packet.
 - Percentage of saved jobs reviewed with match and quality signals.
 - Percentage of saved jobs moved to applied, networking, or intentional skip.
+- Percentage of recommended jobs accepted, saved, or liked by users.
 - Application-to-interview conversion rate.
 - Follow-up completion rate.
 - User-reported job search confidence and control.
@@ -63,4 +66,3 @@ Supporting metrics:
 ## Source Base
 
 The market brief uses sources from BLS, MarketWatch, AP, Business Insider, The Guardian, arXiv research papers, and public product pages for Teal, Huntr, Simplify, Jobscan, and Career.io. See [Market Research and Product Strategy](00-market-research-and-product-strategy.md#sources) for the full list.
-

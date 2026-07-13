@@ -124,6 +124,7 @@ Career Coach can differentiate on:
 | --- | --- | --- |
 | Reliable application workspace | Fewer lost jobs, fewer duplicate entries, less mental load. | Make capture, resume setup, ATS score, tailoring, and tracking durable. |
 | Opportunity triage | Less wasted time on poor-fit, stale, risky, or low-return postings. | Add fit and job-quality scorecards before application effort. |
+| Job discovery and preference learning | Better-fit opportunities without manual board scanning. | Let users state target roles and teach the system with liked, saved, skipped, and applied jobs. |
 | Application packet | Faster submission without lowering quality. | Generate reviewable, exportable, source-backed packets. |
 | Assisted apply | Less repetitive form entry. | Autofill only after user review; never auto-submit. |
 | Interview acceleration | Better conversion after application. | Build a story bank and role-specific interview prep. |
@@ -153,9 +154,10 @@ Guardrail metrics:
 
 1. First make the current workflow reliable enough that a user can trust it every day.
 2. Then add decision support so users apply to better jobs, not just more jobs.
-3. Then reduce application execution time with packets and assisted apply.
-4. Then help users win interviews after they get callbacks.
-5. Finally, add weekly planning and feedback once the product has enough behavioral data.
+3. Then add job discovery and preference learning so the product can surface better opportunities instead of only reacting to manually captured roles.
+4. Then reduce application execution time with packets and assisted apply.
+5. Then help users win interviews after they get callbacks.
+6. Finally, add weekly planning and feedback once the product has enough behavioral data.
 
 ## Key Risks
 

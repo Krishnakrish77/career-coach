@@ -148,6 +148,7 @@ git config core.hooksPath .githooks
 ## CI / releases
 
 - **CI** (`.github/workflows/ci.yml`) runs on PRs and pushes to `main` only — not every branch push, and not on docs/icon-only changes (`paths-ignore`). A new push to the same PR cancels the previous run in progress rather than letting a stale one finish. This is a backstop: the pre-push hook above should already catch most failures before they ever reach Actions.
+- **Supabase migrations** (`.github/workflows/supabase-migrations.yml`) runs when `supabase/migrations/**` or `supabase/config.toml` changes. PRs rebuild a local database from migrations and lint it; pushes to `main` apply pending migrations to the linked Supabase project. Configure repository secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, and `SUPABASE_DB_PASSWORD` before relying on the deploy step.
 - **Releases** (`.github/workflows/release.yml`) only fire on a `v*` tag push — never on a normal commit. To cut one:
   ```
   # bump "version" in manifest.json and package.json to match, then:

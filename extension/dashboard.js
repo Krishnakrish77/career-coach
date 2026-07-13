@@ -9,11 +9,21 @@ import {
   deleteJob,
   saveResume,
   getLatestResume,
+  getProfilePreferences,
+  saveProfilePreferences,
+  saveOpportunityScorecard,
+  addJobFeedback,
+  getApplicationPacket,
+  createApplicationPacket,
+  updateApplicationPacketItem,
+  submitApplicationPacket,
   listJobArtifacts,
   tailorJob,
   extractResumeFromPdf,
 } from '../src/supabase-db.js';
 import { checkResumeHealth } from '../src/job-utils.js';
+import { buildOpportunityScorecard, recommendationLabel } from '../src/opportunity-utils.js';
+import { createPacketDrafts } from '../src/packet-utils.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 // Cheapest/lightest model per provider — a cost-conscious default, not a capability pick.
@@ -25,6 +35,8 @@ let selectedJobId = null;
 let statusFilter = 'all';
 let searchFilter = '';
 let followUpDueOnly = false;
+let profilePreferences = null;
+let recommendationFilter = 'all';
 
 function setStatusElement(el, message, kind = '') {
   el.textContent = message;
@@ -198,6 +210,9 @@ async function renderJobList() {
   if (followUpDueOnly) {
     filtered = filtered.filter((j) => isFollowUpDue(applicationOf(j)));
   }
+  if (recommendationFilter !== 'all') {
+    filtered = filtered.filter((j) => jobMatchOf(j)?.recommendation === recommendationFilter);
+  }
   const selectedVisible = filtered.some((job) => job.id === selectedJobId);
   if (filtered.length > 0 && !selectedVisible) selectedJobId = filtered[0].id;
   if (filtered.length === 0) selectedJobId = null;
@@ -295,6 +310,13 @@ async function renderJobDetail(editing = false) {
     artifacts = await listJobArtifacts(session.accessToken, job.id);
   } catch {
     artifacts = [];
+  }
+
+  let packet = null;
+  try {
+    packet = await getApplicationPacket(session.accessToken, job.id);
+  } catch {
+    // Packet data is additive; a temporary failure must not hide the job.
   }
 
   const application = applicationOf(job);
@@ -455,6 +477,176 @@ async function renderJobDetail(editing = false) {
   }
 
   const jobMatch = jobMatchOf(job);
+
+  // PRD 2: scorecards stay explainable. A user explicitly triggers this
+  // deterministic calculation, then it is persisted for queueing later.
+  const triageSection = document.createElement('section');
+  triageSection.className = 'detail-section stack';
+  const triageHeader = document.createElement('div');
+  triageHeader.className = 'detail-section-header';
+  const triageTitle = document.createElement('h3');
+  triageTitle.textContent = 'Opportunity Triage';
+  const triageBtn = document.createElement('button');
+  triageBtn.type = 'button';
+  triageBtn.className = 'subtle';
+  triageBtn.textContent = jobMatch?.score_explanation?.recommendation ? 'Refresh Triage' : 'Assess Opportunity';
+  triageHeader.append(triageTitle, triageBtn);
+  const triageStatus = document.createElement('div');
+  triageStatus.className = 'status-line';
+  const storedCard = jobMatch?.score_explanation?.factors ? jobMatch.score_explanation : null;
+  const renderScorecard = (scorecard) => {
+    const box = document.createElement('div');
+    box.className = 'scorecard stack compact';
+    const summary = document.createElement('div');
+    summary.textContent = `${recommendationLabel(scorecard.recommendation)} · ${scorecard.overall_score}/100 · ${scorecard.confidence} confidence`;
+    box.appendChild(summary);
+    for (const factor of scorecard.factors) {
+      const line = document.createElement('div');
+      line.className = 'small';
+      line.textContent = `${factor.label}: ${factor.score}/100 (${factor.confidence}) — ${factor.explanation}`;
+      box.appendChild(line);
+    }
+    const concerns = scorecard.quality?.concerns || [];
+    if (concerns.length) {
+      const line = document.createElement('div');
+      line.className = 'small';
+      line.textContent = `Review: ${concerns.slice(0, 3).join(' ')}`;
+      box.appendChild(line);
+    }
+    return box;
+  };
+  if (storedCard) triageSection.append(triageHeader, renderScorecard(storedCard));
+  else triageSection.append(triageHeader, document.createTextNode('Assess fit, risk signals, and a suggested next step.'));
+  triageSection.appendChild(triageStatus);
+  triageBtn.addEventListener('click', async () => {
+    triageBtn.disabled = true;
+    setStatusElement(triageStatus, 'Assessing...');
+    try {
+      if (!profilePreferences) profilePreferences = (await getProfilePreferences(session.accessToken)) || {};
+      const scorecard = buildOpportunityScorecard({ job, match: jobMatch || {}, preferences: profilePreferences });
+      await saveOpportunityScorecard(session.accessToken, job.id, scorecard);
+      await renderJobList();
+      await renderJobDetail(editing);
+    } catch (err) {
+      setStatusElement(triageStatus, `Error: ${err.message}`, 'error');
+      triageBtn.disabled = false;
+    }
+  });
+
+  // OTJ-7: an intentional skip is a productive outcome, not just a silently
+  // ignored job — recording why improves future triage.
+  const feedbackRow = document.createElement('div');
+  feedbackRow.className = 'row';
+  const feedbackReason = document.createElement('select');
+  for (const [value, label] of [
+    ['level', 'Wrong level'],
+    ['location', 'Wrong location'],
+    ['pay', 'Pay too low'],
+    ['industry', 'Wrong industry'],
+    ['company', "Don't want this company"],
+    ['poor_posting', 'Poor-quality posting'],
+    ['duplicate', 'Duplicate'],
+    ['other', 'Other'],
+  ]) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    feedbackReason.appendChild(opt);
+  }
+  const notInterestedBtn = document.createElement('button');
+  notInterestedBtn.type = 'button';
+  notInterestedBtn.className = 'subtle';
+  notInterestedBtn.textContent = 'Not Interested';
+  feedbackRow.append(feedbackReason, notInterestedBtn);
+  triageSection.appendChild(feedbackRow);
+  notInterestedBtn.addEventListener('click', async () => {
+    notInterestedBtn.disabled = true;
+    setStatusElement(triageStatus, 'Saving...');
+    try {
+      await addJobFeedback(session.accessToken, job.id, { actionTaken: 'not_interested', reason: feedbackReason.value });
+      setStatusElement(triageStatus, 'Noted — thanks, this helps future triage.', 'success');
+    } catch (err) {
+      setStatusElement(triageStatus, `Error: ${err.message}`, 'error');
+    } finally {
+      notInterestedBtn.disabled = false;
+    }
+  });
+
+  card.appendChild(triageSection);
+
+  const packetSection = document.createElement('section');
+  packetSection.className = 'detail-section stack';
+  const packetHeader = document.createElement('div');
+  packetHeader.className = 'detail-section-header';
+  const packetTitle = document.createElement('h3');
+  packetTitle.textContent = 'Application Packet';
+  const packetBtn = document.createElement('button');
+  packetBtn.type = 'button';
+  packetBtn.className = 'primary';
+  packetBtn.textContent = packet ? 'Packet Ready' : 'Create Packet';
+  packetBtn.disabled = Boolean(packet);
+  packetHeader.append(packetTitle, packetBtn);
+  const packetStatus = document.createElement('div');
+  packetStatus.className = 'status-line';
+  packetSection.append(packetHeader);
+  if (packet) {
+    const checklist = document.createElement('div');
+    checklist.className = 'small';
+    const items = packet.application_packet_items || [];
+    checklist.textContent = `Review checklist: ${items.some((item) => item.item_type === 'tailored_resume') ? 'resume selected' : 'resume missing'} · ${items.some((item) => item.item_type === 'cover_letter') ? 'cover letter included' : 'cover letter missing'} · review every answer and contact detail before applying.`;
+    packetSection.appendChild(checklist);
+    for (const item of items) {
+      const field = document.createElement('textarea');
+      field.value = item.final_content ?? item.draft_content ?? '';
+      const save = document.createElement('button');
+      save.type = 'button'; save.className = 'subtle'; save.textContent = `Save ${item.label || item.item_type}`;
+      const evidence = document.createElement('div'); evidence.className = 'small'; evidence.textContent = item.source_evidence || 'Needs user input.';
+      save.addEventListener('click', async () => {
+        save.disabled = true;
+        try { await updateApplicationPacketItem(session.accessToken, item.id, { finalContent: field.value }); setStatusElement(packetStatus, 'Saved.', 'success'); }
+        catch (err) { setStatusElement(packetStatus, `Error: ${err.message}`, 'error'); }
+        finally { save.disabled = false; }
+      });
+      packetSection.append(labelWrap(item.label || item.item_type, field), evidence, save);
+    }
+    const submitted = packet.application_submissions?.[0];
+    if (!submitted) {
+      const confirmation = document.createElement('input'); confirmation.placeholder = 'Confirmation number or note (optional)';
+      const followUp = document.createElement('input'); followUp.type = 'date';
+      const submit = document.createElement('button'); submit.type = 'button'; submit.className = 'primary'; submit.textContent = 'I Submitted This Application';
+      submit.addEventListener('click', async () => {
+        submit.disabled = true;
+        try {
+          await submitApplicationPacket(session.accessToken, packet.id, { confirmationText: confirmation.value, followUpAt: followUp.value ? new Date(followUp.value).toISOString() : null });
+          await updateApplicationStatus(session.accessToken, job.id, 'applied');
+          await renderJobList(); await renderJobDetail(editing);
+        } catch (err) { setStatusElement(packetStatus, `Error: ${err.message}`, 'error'); submit.disabled = false; }
+      });
+      packetSection.append(labelWrap('Submission confirmation', confirmation), labelWrap('Next follow-up', followUp), submit);
+    } else packetSection.appendChild(document.createTextNode(`Submitted ${formatDateTime(submitted.submitted_at)}.`));
+  } else packetSection.append(document.createTextNode('Creates editable, review-required drafts. It never submits an application.'));
+  packetSection.appendChild(packetStatus);
+  packetBtn.addEventListener('click', async () => {
+    packetBtn.disabled = true;
+    setStatusElement(packetStatus, 'Creating packet...');
+    try {
+      const existing = await getApplicationPacket(session.accessToken, job.id);
+      if (existing) return renderJobDetail(editing);
+      const resume = await getLatestResume(session.accessToken);
+      await createApplicationPacket(session.accessToken, {
+        jobId: job.id,
+        resumeId: resume?.id,
+        items: createPacketDrafts({ job, application }),
+      });
+      await renderJobDetail(editing);
+    } catch (err) {
+      setStatusElement(packetStatus, `Error: ${err.message}`, 'error');
+    } finally {
+      packetBtn.disabled = false;
+    }
+  });
+  card.appendChild(packetSection);
+
   if (jobMatch) {
     const atsSection = document.createElement('section');
     atsSection.className = 'detail-section';
@@ -721,6 +913,12 @@ $('filterFollowUpDue').addEventListener('change', async (e) => {
   await renderJobDetail();
 });
 
+$('filterRecommendation').addEventListener('change', async (e) => {
+  recommendationFilter = e.target.value;
+  await renderJobList();
+  await renderJobDetail();
+});
+
 // ---- Resume ----
 // No versioning: the most recently saved resume is always what tailoring
 // uses. Health check is still shown so bad captures get flagged either way.
@@ -801,6 +999,43 @@ $('saveResume').addEventListener('click', async () => {
 });
 
 // ---- Settings (provider/model preference only; API keys live server-side now) ----
+function csvValues(value) {
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+async function loadPreferences() {
+  try {
+    profilePreferences = (await getProfilePreferences(session.accessToken)) || {};
+    $('targetTitles').value = (profilePreferences.target_titles || []).join(', ');
+    $('remotePreference').value = profilePreferences.remote_preference || '';
+    $('workAuthorization').value = profilePreferences.work_authorization || '';
+    $('salaryMin').value = profilePreferences.salary_min ?? '';
+    $('excludedCompanies').value = (profilePreferences.excluded_companies || []).join(', ');
+  } catch (err) {
+    setStatus('preferencesStatus', `Error: ${err.message}`, 'error');
+  }
+}
+
+$('savePreferences').addEventListener('click', async () => {
+  const btn = $('savePreferences');
+  btn.disabled = true;
+  setStatus('preferencesStatus', 'Saving...');
+  try {
+    profilePreferences = await saveProfilePreferences(session.accessToken, {
+      target_titles: csvValues($('targetTitles').value),
+      remote_preference: $('remotePreference').value || null,
+      work_authorization: $('workAuthorization').value.trim() || null,
+      salary_min: $('salaryMin').value ? Number($('salaryMin').value) : null,
+      excluded_companies: csvValues($('excludedCompanies').value),
+    });
+    setStatus('preferencesStatus', 'Saved.', 'success');
+  } catch (err) {
+    setStatus('preferencesStatus', `Error: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 async function loadSettings() {
   const { settings } = await getStorage('settings');
   $('provider').value = settings?.provider || 'anthropic';
@@ -839,6 +1074,7 @@ async function init() {
   await renderJobList();
   await renderJobDetail();
   loadResume();
+  loadPreferences();
   loadSettings();
 }
 

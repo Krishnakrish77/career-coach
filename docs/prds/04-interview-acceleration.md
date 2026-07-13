@@ -1,7 +1,7 @@
 # PRD 4: Interview Acceleration
 
 Status: Draft
-Target horizon: Phase 4, 16-26 weeks
+Target horizon: Phase 5, 16-26 weeks
 Primary surfaces: dashboard interview tab, job detail, story bank
 Dependencies: Application Packet, tracked application status
 
@@ -141,4 +141,4 @@ Implementation notes:
 
 - Should the first version support only text practice, or is microphone-based answer capture essential?
 - Which interview types should be first: behavioral, product, engineering, sales, customer support, or general screening?
-- Should interview outcomes feed back into weekly coaching in Phase 5?
+- Should interview outcomes feed back into weekly coaching in Phase 6?
