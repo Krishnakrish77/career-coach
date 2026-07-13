@@ -14,10 +14,22 @@ const TAILOR_SCHEMA = {
   properties: {
     tailored_resume: { type: "string" },
     cover_letter: { type: "string" },
+    ats_score: { type: "integer" },
+    matched_skills: { type: "array", items: { type: "string" } },
+    missing_skills: { type: "array", items: { type: "string" } },
+    ats_notes: { type: "string" },
   },
-  required: ["tailored_resume", "cover_letter"],
+  required: ["tailored_resume", "cover_letter", "ats_score", "matched_skills", "missing_skills", "ats_notes"],
   additionalProperties: false,
 };
+
+function gradeFromScore(score: number): string {
+  if (score >= 90) return "A";
+  if (score >= 80) return "B";
+  if (score >= 70) return "C";
+  if (score >= 60) return "D";
+  return "F";
+}
 
 async function callAnthropic(model: string, systemPrompt: string, userPrompt: string) {
   if (!ANTHROPIC_API_KEY) throw new Error("Anthropic isn't configured on this server (missing ANTHROPIC_API_KEY secret).");
@@ -187,8 +199,11 @@ export default {
     }
 
     const systemPrompt =
-      "You are a career coach. Given a resume and a job posting, produce a tailored resume " +
-      "(rewritten bullets emphasizing relevant experience) and a concise cover letter.";
+      "You are a career coach. Given a resume and a job posting, produce: a tailored resume " +
+      "(rewritten bullets emphasizing relevant experience), a concise cover letter, and an ATS match " +
+      "assessment — a 0-100 score for how well the resume's skills/keywords match the job posting, the " +
+      "specific skills/keywords found in both (matched_skills), the important ones from the posting " +
+      "that are missing from the resume (missing_skills), and a one-sentence note explaining the score.";
     const userPrompt =
       `RESUME:\n${resume.raw_text.slice(0, MAX_INPUT_CHARS)}\n\n` +
       `JOB POSTING (raw page text, may include nav/boilerplate — ignore that):\n${(job.jd_text ?? "").slice(0, MAX_INPUT_CHARS)}`;
@@ -224,6 +239,23 @@ export default {
     if (upsertError) {
       return Response.json({ error: upsertError.message }, { status: 500 });
     }
+
+    // Best-effort — the tailored resume/cover letter are the core deliverable
+    // and already saved above; if storing the score fails, don't fail the
+    // whole request over it, just ship without a grade this round.
+    await ctx.supabase
+      .from("job_matches")
+      .upsert(
+        {
+          job_id,
+          cv_match_score: parsed.ats_score,
+          overall_grade: gradeFromScore(parsed.ats_score),
+          matched_skills: parsed.matched_skills,
+          missing_skills: parsed.missing_skills,
+          reasoning: parsed.ats_notes,
+        },
+        { onConflict: "user_id,job_id" },
+      );
 
     return Response.json(application);
   }),

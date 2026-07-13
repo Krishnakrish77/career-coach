@@ -42,8 +42,12 @@
         </div>
       </div>
       <div class="panel form-panel stack">
+        <label>Upload a PDF <span class="small">(extracts text — review before saving)</span>
+          <input id="resumePdfInput" type="file" accept="application/pdf">
+        </label>
+        <div id="resumePdfStatus" class="status-line" aria-live="polite"></div>
         <label>Current resume
-          <textarea id="resumeText" placeholder="Paste your resume text here"></textarea>
+          <textarea id="resumeText" placeholder="Paste your resume text here, or upload a PDF above"></textarea>
         </label>
         <div class="form-actions">
           <button id="saveResume" class="primary" type="button">Save Resume</button>

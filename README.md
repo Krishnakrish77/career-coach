@@ -8,10 +8,12 @@ Career Coach is a Chrome extension that helps you run a job search: capture post
 
 - **Capture** — one click in the popup saves the current tab's job posting text
 - **Tailor** — generates a tailored resume + cover letter per job via an LLM (Anthropic, OpenAI, or Gemini — your choice in Settings)
+- **ATS match scoring** — every tailoring run also produces a 0–100 match score, an A–F grade, and matched/missing skills against that job's posting (stored in `job_matches`, surfaced as a badge in the Jobs list and a full breakdown in the job detail panel)
+- **Resume upload** — paste text, or upload a PDF and have it extracted to text automatically (always via Anthropic, regardless of your tailoring provider choice — see Architecture)
 - **Track** — per-job application status (`saved` → `applied` → `interviewing` → `offer`/`rejected`)
 - **Multi-device** — signed-in accounts, data lives in Supabase, not just one browser's local storage
 
-See [Not built yet](#not-built-yet-honest-roadmap) for what this *isn't* — job-board scanning, fit scoring, and the interview story bank are designed for (the schema has room) but not implemented.
+See [Not built yet](#not-built-yet-honest-roadmap) for what this *isn't* — job-board scanning and the interview story bank are designed for (the schema has room) but not implemented. Fit scoring beyond the CV/ATS dimension (role fit, level fit, comp fit, personalization) is also unimplemented — `job_matches` has columns for them, but only `cv_match_score` is currently computed.
 
 ## Architecture
 
@@ -23,14 +25,18 @@ Extension (Chrome, MV3)
 └─ src/
    ├─ storage.js                         — chrome.storage.local wrapper (session + provider/model preference only)
    ├─ supabase-auth.js                   — email/password auth against Supabase's GoTrue REST API
-   └─ supabase-db.js                     — PostgREST calls (jobs/resumes/applications) + calls the `tailor` Edge Function
+   └─ supabase-db.js                     — PostgREST calls (jobs/resumes/applications) + calls the `tailor`/`extract-resume` Edge Functions
 
 Supabase
 ├─ Postgres — resumes, profiles, jobs, applications, job_matches, interview_stories (RLS-scoped per user)
 ├─ Auth — email/password; the extension holds the resulting JWT
-└─ Edge Function `tailor` — runs the LLM call server-side with the operator's own API key,
-   so no LLM key ever lives in the browser. Enforces a model allowlist, a per-job debounce,
-   and a per-user hourly cap before spending on a call.
+├─ Edge Function `tailor` — runs the LLM call server-side with the operator's own API key,
+│  so no LLM key ever lives in the browser. Enforces a model allowlist, a per-job debounce,
+│  a per-user hourly cap before spending on a call, and also computes the ATS match score
+│  (stored in `job_matches`) as part of the same call.
+└─ Edge Function `extract-resume` — PDF → plain text, always via Anthropic (native PDF
+   document support) regardless of the tailoring provider you've selected — this is a
+   one-time, low-volume utility call, not something that needs per-provider parity.
 ```
 
 Why a backend at all, for a browser extension: RLS is what makes per-user data isolation real (not just "the UI happens to filter"), and moving the LLM call server-side means the operator's API key — not each user's own — pays for tailoring, which is what makes signup viable for people who don't have their own Anthropic/OpenAI account.
@@ -47,7 +53,7 @@ src/                          Shared extension modules
   storage.js                  chrome.storage.local wrapper
   supabase-auth.js            Auth: signUp/signIn/refreshSession/getValidSession
   supabase-db.js              Data: listJobs/getJob/insertJob/updateApplicationStatus/
-                               deleteJob/saveResume/getLatestResume/tailorJob
+                               deleteJob/saveResume/getLatestResume/tailorJob/extractResumeFromPdf
 test/*.test.js                Node built-in test runner (node --test), no framework/deps
 icons/                        icon.svg (source) + rasterized PNGs + logo.svg/png
 supabase/migrations/*.sql     Schema, in order — see below
@@ -80,16 +86,17 @@ supabase/config.toml          Local Supabase project config (synced to the live 
    supabase db push --password '<your-db-password>'
    ```
 
-4. **Set the operator's LLM key(s) as Edge Function secrets.** At least one is required for tailoring to work; add the others only if you want those provider options live in Settings.
+4. **Set the operator's LLM key(s) as Edge Function secrets.** `ANTHROPIC_API_KEY` is required regardless of your provider choice — it also powers PDF resume extraction. Add the others only if you want those provider options live in Settings for tailoring.
    ```
    supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
-   supabase secrets set OPENAI_API_KEY=sk-...      # optional
-   supabase secrets set GEMINI_API_KEY=...          # optional
+   supabase secrets set OPENAI_API_KEY=sk-...      # optional, tailoring only
+   supabase secrets set GEMINI_API_KEY=...          # optional, tailoring only
    ```
 
-5. **Deploy the Edge Function.**
+5. **Deploy both Edge Functions.**
    ```
    supabase functions deploy tailor --use-api
+   supabase functions deploy extract-resume --use-api
    ```
    (`--use-api` bundles server-side without needing Docker running locally.)
 
@@ -121,9 +128,10 @@ npm test          # runs every test/*.test.js via Node's built-in test runner �
 
 Tests mock `fetch` via dependency injection (every network function takes an optional `fetchImpl` parameter) rather than stubbing globals — see `test/supabase-auth.test.js` / `test/supabase-db.test.js` for the pattern.
 
-To iterate on the Edge Function:
+To iterate on an Edge Function, redeploy the one you changed:
 ```
-supabase functions deploy tailor --use-api   # after any change to supabase/functions/tailor/index.ts
+supabase functions deploy tailor --use-api          # after any change to supabase/functions/tailor/index.ts
+supabase functions deploy extract-resume --use-api  # after any change to supabase/functions/extract-resume/index.ts
 ```
 
 To add a schema change: `supabase migration new <name>`, edit the generated SQL, then `supabase db push --password '...'`.
@@ -161,8 +169,8 @@ git config core.hooksPath .githooks
 The schema (`job_matches`, `interview_stories`, `profiles`) has room for these, but none are wired up:
 
 - Job-board scanning / bulk discovery (currently: manual capture only, one job at a time)
-- Fit scoring (`job_matches` — role/CV/level/comp/personalization scorecard, legitimacy flag)
-- Skill-based profile extraction from the resume
+- The rest of `job_matches`' scorecard — role fit, level fit, comp fit, personalization, and the legitimacy flag. Only `cv_match_score` (the ATS match) is computed today.
+- Skill-based profile extraction from the resume (`profiles` table)
 - Interview story bank (STAR+R)
 - A Supabase preview branch for testing migrations before production — still manual today
 
