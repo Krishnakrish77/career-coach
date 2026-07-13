@@ -384,6 +384,12 @@ export async function getWeeklyRetrospective(accessToken, week, fetchImpl = fetc
 export async function saveWeeklyRetrospective(accessToken, retrospective, fetchImpl = fetch) {
   const [saved] = await restRequest('weekly_retrospectives?on_conflict=user_id,week_start', accessToken, { method: 'POST', body: retrospective, extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' } }, fetchImpl); return saved;
 }
+export async function listInterviewChecklist(accessToken, jobId, fetchImpl = fetch) {
+  return restRequest(`interview_prep_checklists?job_id=eq.${jobId}&select=*&order=item_key.asc`, accessToken, {}, fetchImpl);
+}
+export async function saveInterviewChecklistItem(accessToken, jobId, itemKey, completed, fetchImpl = fetch) {
+  const [saved] = await restRequest('interview_prep_checklists?on_conflict=user_id,job_id,item_key', accessToken, { method: 'POST', body: { job_id: jobId, item_key: itemKey, completed, updated_at: new Date().toISOString() }, extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' } }, fetchImpl); return saved;
+}
 
 // RAW-6/RAW-7: history of tailoring generations for one job, newest first.
 export async function listJobArtifacts(accessToken, jobId, fetchImpl = fetch) {

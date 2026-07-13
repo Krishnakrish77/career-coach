@@ -35,6 +35,7 @@ import {
   saveWeeklyPlan,
   updateWeeklyPlanItem,
   listCoachingReminders, saveCoachingReminder, updateCoachingReminder, getWeeklyRetrospective, saveWeeklyRetrospective,
+  listInterviewChecklist, saveInterviewChecklistItem,
 } from '../src/supabase-db.js';
 import { checkResumeHealth } from '../src/job-utils.js';
 import { buildOpportunityScorecard, recommendationLabel } from '../src/opportunity-utils.js';
@@ -980,6 +981,9 @@ async function renderDiscovery() {
   list.replaceChildren(emptyState('Loading discovery queue...'));
   try {
     const recommendations = await listDiscoveryRecommendations(session.accessToken);
+    const active = recommendations.filter((item) => ['new', 'seen'].includes(item.status));
+    const strong = active.filter((item) => item.recommendation_label === 'strong_match').length;
+    $('discoveryDigest').textContent = active.length ? `${active.length} role${active.length === 1 ? '' : 's'} waiting for review${strong ? `, including ${strong} strong match${strong === 1 ? '' : 'es'}` : ''}. Recommendations are user-imported and may no longer be open.` : 'No new recommendations this week.';
     list.replaceChildren();
     if (!recommendations.length) return list.appendChild(emptyState('No discoveries yet. Import a public job URL or paste a role above.'));
     for (const recommendation of recommendations) {
@@ -1066,6 +1070,7 @@ async function renderDiscovery() {
     list.replaceChildren(emptyState(`Could not load discovery: ${err.message}`));
   }
 }
+$('showDiscoveryDigest').addEventListener('click', renderDiscovery);
 
 $('importDiscovery').addEventListener('click', async () => {
   const url = $('discoveryUrl').value.trim();
@@ -1138,6 +1143,8 @@ async function renderLikelyQuestions() {
       const matches = matchStoriesToQuestion(item.question, interviewStories);
       if (matches.length) { const hint = document.createElement('div'); hint.className = 'small'; hint.textContent = `Suggested story: ${matches[0].story.title} — ${matches[0].reason}`; list.appendChild(hint); }
     }
+    const checklist = await listInterviewChecklist(session.accessToken, jobId); const complete = new Map(checklist.map((item) => [item.item_key, item.completed])); const checklistList = $('interviewChecklist'); checklistList.replaceChildren();
+    for (const [key, label] of [['company_research', 'Research the company and role themes'], ['stories', 'Select and review your strongest stories'], ['questions', 'Prepare questions to ask the interviewer'], ['logistics', 'Confirm interview logistics']]) { const row = document.createElement('label'); row.className = 'filter-checkbox'; const box = document.createElement('input'); box.type = 'checkbox'; box.checked = Boolean(complete.get(key)); box.addEventListener('change', async () => { await saveInterviewChecklistItem(session.accessToken, jobId, key, box.checked); }); row.append(box, document.createTextNode(label)); checklistList.appendChild(row); }
   } catch (err) { list.appendChild(emptyState(`Could not generate questions: ${err.message}`)); }
 }
 
