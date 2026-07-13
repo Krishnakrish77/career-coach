@@ -14,6 +14,10 @@ import {
   saveProfilePreferences,
   saveOpportunityScorecard,
   addJobFeedback,
+  createApplicationPacket,
+  getApplicationPacket,
+  updateApplicationPacketItem,
+  submitApplicationPacket,
   listJobArtifacts,
   tailorJob,
   extractResumeFromPdf,
@@ -230,6 +234,25 @@ test('job feedback is an explicit user action', async () => {
   await addJobFeedback('token-1', 'job-1', { actionTaken: 'skipped', reason: 'location' }, fetchImpl);
   assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/job_feedback`);
   assert.deepEqual(JSON.parse(calls[0].opts.body), { job_id: 'job-1', action_taken: 'skipped', reason: 'location' });
+});
+
+test('application packets are created with items but never submitted implicitly', async () => {
+  const { fetchImpl, calls } = fetchSequence([
+    fakeResponse({ json: [{ id: 'packet-1' }] }),
+    fakeResponse({ noContent: true }),
+  ]);
+  await createApplicationPacket('token-1', { jobId: 'job-1', resumeId: 'resume-1', items: [{ item_type: 'cover_letter', label: 'Cover letter', draft_content: 'draft' }] }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/application_packets?on_conflict=user_id,job_id`);
+  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/application_packet_items?on_conflict=packet_id,item_type,label`);
+  assert.equal(JSON.parse(calls[1].opts.body)[0].packet_id, 'packet-1');
+});
+
+test('packet submission explicitly creates a submission then marks packet submitted', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'submission-1' }] }), fakeResponse({ json: [{ status: 'submitted' }] })]);
+  await submitApplicationPacket('token-1', 'packet-1', { confirmationText: 'ABC', followUpAt: null }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/application_submissions?on_conflict=packet_id`);
+  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/application_packets?id=eq.packet-1`);
+  assert.equal(JSON.parse(calls[1].opts.body).status, 'submitted');
 });
 
 test('listJobArtifacts requests history for one job, newest first', async () => {

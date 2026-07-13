@@ -12,12 +12,17 @@ import {
   getProfilePreferences,
   saveProfilePreferences,
   saveOpportunityScorecard,
+  getApplicationPacket,
+  createApplicationPacket,
+  updateApplicationPacketItem,
+  submitApplicationPacket,
   listJobArtifacts,
   tailorJob,
   extractResumeFromPdf,
 } from '../src/supabase-db.js';
 import { checkResumeHealth } from '../src/job-utils.js';
 import { buildOpportunityScorecard, recommendationLabel } from '../src/opportunity-utils.js';
+import { createPacketDrafts } from '../src/packet-utils.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 // Cheapest/lightest model per provider — a cost-conscious default, not a capability pick.
@@ -306,6 +311,13 @@ async function renderJobDetail(editing = false) {
     artifacts = [];
   }
 
+  let packet = null;
+  try {
+    packet = await getApplicationPacket(session.accessToken, job.id);
+  } catch {
+    // Packet data is additive; a temporary failure must not hide the job.
+  }
+
   const application = applicationOf(job);
 
   const card = document.createElement('article');
@@ -520,6 +532,79 @@ async function renderJobDetail(editing = false) {
     }
   });
   card.appendChild(triageSection);
+
+  const packetSection = document.createElement('section');
+  packetSection.className = 'detail-section stack';
+  const packetHeader = document.createElement('div');
+  packetHeader.className = 'detail-section-header';
+  const packetTitle = document.createElement('h3');
+  packetTitle.textContent = 'Application Packet';
+  const packetBtn = document.createElement('button');
+  packetBtn.type = 'button';
+  packetBtn.className = 'primary';
+  packetBtn.textContent = packet ? 'Packet Ready' : 'Create Packet';
+  packetBtn.disabled = Boolean(packet);
+  packetHeader.append(packetTitle, packetBtn);
+  const packetStatus = document.createElement('div');
+  packetStatus.className = 'status-line';
+  packetSection.append(packetHeader);
+  if (packet) {
+    const checklist = document.createElement('div');
+    checklist.className = 'small';
+    const items = packet.application_packet_items || [];
+    checklist.textContent = `Review checklist: ${items.some((item) => item.item_type === 'tailored_resume') ? 'resume selected' : 'resume missing'} · ${items.some((item) => item.item_type === 'cover_letter') ? 'cover letter included' : 'cover letter missing'} · review every answer and contact detail before applying.`;
+    packetSection.appendChild(checklist);
+    for (const item of items) {
+      const field = document.createElement('textarea');
+      field.value = item.final_content ?? item.draft_content ?? '';
+      const save = document.createElement('button');
+      save.type = 'button'; save.className = 'subtle'; save.textContent = `Save ${item.label || item.item_type}`;
+      const evidence = document.createElement('div'); evidence.className = 'small'; evidence.textContent = item.source_evidence || 'Needs user input.';
+      save.addEventListener('click', async () => {
+        save.disabled = true;
+        try { await updateApplicationPacketItem(session.accessToken, item.id, { finalContent: field.value }); setStatusElement(packetStatus, 'Saved.', 'success'); }
+        catch (err) { setStatusElement(packetStatus, `Error: ${err.message}`, 'error'); }
+        finally { save.disabled = false; }
+      });
+      packetSection.append(labelWrap(item.label || item.item_type, field), evidence, save);
+    }
+    const submitted = packet.application_submissions?.[0];
+    if (!submitted) {
+      const confirmation = document.createElement('input'); confirmation.placeholder = 'Confirmation number or note (optional)';
+      const followUp = document.createElement('input'); followUp.type = 'date';
+      const submit = document.createElement('button'); submit.type = 'button'; submit.className = 'primary'; submit.textContent = 'I Submitted This Application';
+      submit.addEventListener('click', async () => {
+        submit.disabled = true;
+        try {
+          await submitApplicationPacket(session.accessToken, packet.id, { confirmationText: confirmation.value, followUpAt: followUp.value ? new Date(followUp.value).toISOString() : null });
+          await updateApplicationStatus(session.accessToken, job.id, 'applied');
+          await renderJobList(); await renderJobDetail(editing);
+        } catch (err) { setStatusElement(packetStatus, `Error: ${err.message}`, 'error'); submit.disabled = false; }
+      });
+      packetSection.append(labelWrap('Submission confirmation', confirmation), labelWrap('Next follow-up', followUp), submit);
+    } else packetSection.appendChild(document.createTextNode(`Submitted ${formatDateTime(submitted.submitted_at)}.`));
+  } else packetSection.append(document.createTextNode('Creates editable, review-required drafts. It never submits an application.'));
+  packetSection.appendChild(packetStatus);
+  packetBtn.addEventListener('click', async () => {
+    packetBtn.disabled = true;
+    setStatusElement(packetStatus, 'Creating packet...');
+    try {
+      const existing = await getApplicationPacket(session.accessToken, job.id);
+      if (existing) return renderJobDetail(editing);
+      const resume = await getLatestResume(session.accessToken);
+      await createApplicationPacket(session.accessToken, {
+        jobId: job.id,
+        resumeId: resume?.id,
+        items: createPacketDrafts({ job, application }),
+      });
+      await renderJobDetail(editing);
+    } catch (err) {
+      setStatusElement(packetStatus, `Error: ${err.message}`, 'error');
+    } finally {
+      packetBtn.disabled = false;
+    }
+  });
+  card.appendChild(packetSection);
 
   if (jobMatch) {
     const atsSection = document.createElement('section');

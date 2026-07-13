@@ -227,6 +227,48 @@ export async function addJobFeedback(accessToken, jobId, { actionTaken, reason }
   return feedback;
 }
 
+// PRD 3: packets are an explicit user-created workspace; creating one never
+// changes an application to submitted or writes to a third-party website.
+export async function getApplicationPacket(accessToken, jobId, fetchImpl = fetch) {
+  const rows = await restRequest(
+    `application_packets?job_id=eq.${jobId}&select=*,application_packet_items(*),application_submissions(*)&limit=1`,
+    accessToken, {}, fetchImpl,
+  );
+  return rows[0] || null;
+}
+
+export async function createApplicationPacket(accessToken, { jobId, resumeId, items }, fetchImpl = fetch) {
+  const [packet] = await restRequest('application_packets?on_conflict=user_id,job_id', accessToken, {
+    method: 'POST', body: { job_id: jobId, resume_id: resumeId || null },
+    extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
+  }, fetchImpl);
+  if (items?.length) {
+    await restRequest('application_packet_items?on_conflict=packet_id,item_type,label', accessToken, {
+      method: 'POST', body: items.map((item) => ({ ...item, packet_id: packet.id })),
+      extraHeaders: { prefer: 'resolution=ignore-duplicates' },
+    }, fetchImpl);
+  }
+  return packet;
+}
+
+export async function updateApplicationPacketItem(accessToken, itemId, { finalContent }, fetchImpl = fetch) {
+  const [item] = await restRequest(`application_packet_items?id=eq.${itemId}`, accessToken, {
+    method: 'PATCH', body: { final_content: finalContent, updated_at: new Date().toISOString() }, extraHeaders: { prefer: 'return=representation' },
+  }, fetchImpl);
+  return item;
+}
+
+export async function submitApplicationPacket(accessToken, packetId, { confirmationText, followUpAt }, fetchImpl = fetch) {
+  const [submission] = await restRequest('application_submissions?on_conflict=packet_id', accessToken, {
+    method: 'POST', body: { packet_id: packetId, confirmation_text: confirmationText || null, follow_up_at: followUpAt || null },
+    extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
+  }, fetchImpl);
+  await restRequest(`application_packets?id=eq.${packetId}`, accessToken, {
+    method: 'PATCH', body: { status: 'submitted', updated_at: new Date().toISOString() }, extraHeaders: { prefer: 'return=representation' },
+  }, fetchImpl);
+  return submission;
+}
+
 // RAW-6/RAW-7: history of tailoring generations for one job, newest first.
 export async function listJobArtifacts(accessToken, jobId, fetchImpl = fetch) {
   return restRequest(
