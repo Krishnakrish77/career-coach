@@ -1081,7 +1081,8 @@ $('importDiscovery').addEventListener('click', async () => {
   try {
     if (!profilePreferences) profilePreferences = (await getProfilePreferences(session.accessToken)) || {};
     const job = { source_url: url, title: $('discoveryTitle').value.trim(), company: $('discoveryCompany').value.trim(), location: $('discoveryLocation').value.trim(), jd_text: $('discoveryDescription').value };
-    const recommendation = buildDiscoveryRecommendation({ job, preferences: profilePreferences });
+    const resume = await getLatestResume(session.accessToken);
+    const recommendation = buildDiscoveryRecommendation({ job, preferences: profilePreferences, resumeText: resume?.raw_text || '' });
     await importDiscoveredJob(session.accessToken, job, recommendation);
     setStatus('discoveryStatus', 'Added to your discovery queue.', 'success');
     await renderDiscovery();
