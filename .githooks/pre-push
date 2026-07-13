@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runs the test suite before allowing a push. CI on GitHub is the backstop,
+# not the first line of defense — catching failures here means most pushes
+# never trigger an Actions run at all.
+npm test

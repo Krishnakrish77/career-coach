@@ -1,0 +1,27 @@
+name: Release
+
+# Only fires on a version tag push — one run per release, not per commit.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - name: Zip the extension for Chrome Web Store upload
+        run: |
+          mkdir -p dist
+          zip -r "dist/career-coach-${GITHUB_REF_NAME}.zip" manifest.json extension icons src -x '*.DS_Store'
+      - name: Create GitHub release with the zip attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "dist/career-coach-${GITHUB_REF_NAME}.zip" --generate-notes

@@ -1,0 +1,37 @@
+name: CI
+
+# Narrow triggers on purpose: PRs (catches issues before merge) and direct
+# pushes to main (post-merge sanity) — not every branch push, since a PR run
+# already covers those commits. Docs/icon-only changes don't touch anything
+# `npm test` or the syntax checks below verify, so they're excluded.
+on:
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "icons/**"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "icons/**"
+  workflow_dispatch:
+
+# A new push to the same PR/branch supersedes the previous run instead of
+# letting a now-stale run finish — avoids paying for duplicate minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - name: Syntax-check every JS file
+        run: find extension src test -name '*.js' -exec node --check {} \;
+      - name: Validate manifest.json
+        run: node -e "JSON.parse(require('fs').readFileSync('manifest.json', 'utf8'))"
