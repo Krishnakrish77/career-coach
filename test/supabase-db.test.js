@@ -279,6 +279,7 @@ test('listDiscoveryRecommendations requests the queue with its discovered job em
 
 test('importDiscoveredJob upserts the discovered job then its recommendation', async () => {
   const { fetchImpl, calls } = fetchSequence([
+    fakeResponse({ json: [] }),
     fakeResponse({ json: [{ id: 'discovered-1' }] }),
     fakeResponse({ json: [{ id: 'rec-1', recommendation_label: 'strong_match' }] }),
   ]);
@@ -286,17 +287,26 @@ test('importDiscoveredJob upserts the discovered job then its recommendation', a
   const recommendation = { preference_fit_score: 80, job_quality_score: 90, recommendation_label: 'strong_match', reasoning: {} };
   const result = await importDiscoveredJob('token-1', job, recommendation, fetchImpl);
 
-  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/discovered_jobs?on_conflict=user_id,normalized_url`);
-  assert.equal(calls[0].opts.headers.prefer, 'resolution=merge-duplicates,return=representation');
-  const discoveredBody = JSON.parse(calls[0].opts.body);
+  assert.ok(calls[0].url.includes('content_hash=eq.'));
+  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/discovered_jobs?on_conflict=user_id,normalized_url`);
+  assert.equal(calls[1].opts.headers.prefer, 'resolution=merge-duplicates,return=representation');
+  const discoveredBody = JSON.parse(calls[1].opts.body);
   assert.equal(discoveredBody.normalized_url, 'acme.test/jobs/1');
   assert.equal(typeof discoveredBody.content_hash, 'string');
 
-  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/job_recommendations?on_conflict=user_id,discovered_job_id`);
-  assert.deepEqual(JSON.parse(calls[1].opts.body), { discovered_job_id: 'discovered-1', ...recommendation });
+  assert.equal(calls[2].url, `${SUPABASE_URL}/rest/v1/job_recommendations?on_conflict=user_id,discovered_job_id`);
+  assert.deepEqual(JSON.parse(calls[2].opts.body), { discovered_job_id: 'discovered-1', ...recommendation });
 
   assert.equal(result.discovered.id, 'discovered-1');
   assert.equal(result.recommendation.id, 'rec-1');
+});
+
+test('importDiscoveredJob reuses a matching content hash across repost URLs', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'existing' }] }), fakeResponse({ json: [{ id: 'rec' }] })]);
+  const result = await importDiscoveredJob('token-1', { source_url: 'https://b.test/job', jd_text: 'same posting' }, { preference_fit_score: 50, job_quality_score: 50, recommendation_label: 'worth_reviewing' }, fetchImpl);
+  assert.ok(calls[0].url.includes('content_hash=eq.'));
+  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/job_recommendations?on_conflict=user_id,discovered_job_id`);
+  assert.equal(result.discovered.id, 'existing');
 });
 
 test('updateDiscoveryStatus PATCHes the recommendation row by id', async () => {

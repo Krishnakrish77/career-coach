@@ -234,10 +234,14 @@ export async function listDiscoveryRecommendations(accessToken, fetchImpl = fetc
 export async function importDiscoveredJob(accessToken, job, recommendation, fetchImpl = fetch) {
   const normalized_url = normalizeUrl(job.source_url);
   const content_hash = await hashContent(job.jd_text);
-  const [discovered] = await restRequest('discovered_jobs?on_conflict=user_id,normalized_url', accessToken, {
+  // URL is the primary key, but public boards often repost the exact same
+  // description under a different URL. Reuse that private row when its text
+  // hash matches rather than presenting a duplicate recommendation.
+  const sameContent = content_hash ? await restRequest(`discovered_jobs?content_hash=eq.${content_hash}&select=*&limit=1`, accessToken, {}, fetchImpl) : [];
+  const discovered = sameContent[0] || (await restRequest('discovered_jobs?on_conflict=user_id,normalized_url', accessToken, {
     method: 'POST', body: { ...job, normalized_url, content_hash, last_seen_at: new Date().toISOString() },
     extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
-  }, fetchImpl);
+  }, fetchImpl))[0];
   const [saved] = await restRequest('job_recommendations?on_conflict=user_id,discovered_job_id', accessToken, {
     method: 'POST', body: { discovered_job_id: discovered.id, ...recommendation },
     extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
