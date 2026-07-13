@@ -10,6 +10,7 @@
     <h1>Career Coach</h1>
     <nav class="tabs" aria-label="Dashboard views">
       <button class="tab active" type="button" data-tab="jobs">Jobs</button>
+      <button class="tab" type="button" data-tab="discovery">Discovery</button>
       <button class="tab" type="button" data-tab="resume">Resume</button>
       <button class="tab" type="button" data-tab="settings">Settings</button>
     </nav>
@@ -51,6 +52,20 @@
         </aside>
         <section id="jobDetail" class="job-detail" aria-label="Job details"></section>
       </div>
+    </section>
+
+    <section id="discoveryView" class="view">
+      <div class="view-toolbar"><div class="toolbar-copy"><h2>Discovery</h2><div class="small">Import roles you find; recommendations stay separate until you save one.</div></div></div>
+      <div class="panel form-panel stack">
+        <h3>Import a job to review</h3>
+        <label>Job URL <input id="discoveryUrl" type="url" placeholder="https://company.example/jobs/123"></label>
+        <label>Title <input id="discoveryTitle" placeholder="Product Manager"></label>
+        <label>Company <input id="discoveryCompany" placeholder="Company"></label>
+        <label>Location <input id="discoveryLocation" placeholder="Remote, Bengaluru, etc."></label>
+        <label>Job description <textarea id="discoveryDescription" placeholder="Paste the job description"></textarea></label>
+        <div class="form-actions"><button id="importDiscovery" class="primary" type="button">Add to Discovery</button><div id="discoveryStatus" class="status-line" aria-live="polite"></div></div>
+      </div>
+      <div id="discoveryList" class="stack"></div>
     </section>
 
     <section id="resumeView" class="view">

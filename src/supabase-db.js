@@ -252,6 +252,14 @@ export async function updateDiscoveryStatus(accessToken, recommendationId, statu
   return recommendation;
 }
 
+export async function addDiscoveryFeedback(accessToken, discoveredJobId, { action, reasons = [] }, fetchImpl = fetch) {
+  const sentiment = ['like', 'save', 'apply'].includes(action) ? 'positive' : 'negative';
+  const [feedback] = await restRequest('job_preference_feedback', accessToken, {
+    method: 'POST', body: { discovered_job_id: discoveredJobId, sentiment, action, reasons }, extraHeaders: { prefer: 'return=representation' },
+  }, fetchImpl);
+  return feedback;
+}
+
 // PRD 3: packets are an explicit user-created workspace; creating one never
 // changes an application to submitted or writes to a third-party website.
 export async function getApplicationPacket(accessToken, jobId, fetchImpl = fetch) {
