@@ -169,7 +169,7 @@ export async function getLatestResume(accessToken, fetchImpl = fetch) {
 // profile already or not.
 export async function getProfilePreferences(accessToken, fetchImpl = fetch) {
   const rows = await restRequest(
-    'profiles?select=target_titles,title_aliases,target_locations,remote_preference,salary_min,industries,seniority_targets,work_authorization,excluded_companies&limit=1',
+    'profiles?select=target_titles,title_aliases,target_locations,remote_preference,salary_min,industries,seniority_targets,company_sizes,work_authorization,excluded_companies&limit=1',
     accessToken,
     {},
     fetchImpl,

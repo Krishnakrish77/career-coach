@@ -1,6 +1,7 @@
 import { signIn, getValidSession, requestPasswordReset } from '../src/supabase-auth.js';
 import { getStorage, setStorage } from '../src/storage.js';
 import { listJobs, insertJob } from '../src/supabase-db.js';
+import { detectApplicationFields } from '../src/form-utils.js';
 
 const $ = (id) => document.getElementById(id);
 let session = null;
@@ -230,6 +231,18 @@ $('captureJob').addEventListener('click', async () => {
     btn.textContent = originalText;
     btn.removeAttribute('aria-busy');
   }
+});
+
+// Assisted apply is deliberately preview-only here. It neither writes fields
+// nor clicks navigation/submit controls; users can copy packet material after review.
+$('previewForm').addEventListener('click', async () => {
+  const output = $('formPreview'); output.textContent = 'Reading visible fields...';
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !/^https?:\/\//i.test(tab.url || '')) throw new Error('Open an application webpage first.');
+    const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => [...document.querySelectorAll('input, textarea')].filter((el) => !el.disabled && el.type !== 'hidden').map((el) => ({ name: el.name, id: el.id, label: document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.innerText || '', placeholder: el.placeholder, tag: el.tagName.toLowerCase() })) });
+    const fields = detectApplicationFields(result || []); output.textContent = fields.length ? `Preview only: ${fields.map((field) => `${field.type} (${field.confidence})`).join(', ')}. Review packet content before entering anything.` : 'No common application fields found.';
+  } catch (err) { output.textContent = `Could not inspect this page: ${err.message}`; }
 });
 
 $('openDashboard').addEventListener('click', () => openDashboard());

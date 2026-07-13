@@ -1264,6 +1264,7 @@ async function loadPreferences() {
     $('targetLocations').value = (profilePreferences.target_locations || []).join(', ');
     $('industries').value = (profilePreferences.industries || []).join(', ');
     $('seniorityTargets').value = (profilePreferences.seniority_targets || []).join(', ');
+    $('companySizes').value = (profilePreferences.company_sizes || []).join(', ');
     $('remotePreference').value = profilePreferences.remote_preference || '';
     $('workAuthorization').value = profilePreferences.work_authorization || '';
     $('salaryMin').value = profilePreferences.salary_min ?? '';
@@ -1284,6 +1285,7 @@ $('savePreferences').addEventListener('click', async () => {
       target_locations: csvValues($('targetLocations').value),
       industries: csvValues($('industries').value),
       seniority_targets: csvValues($('seniorityTargets').value),
+      company_sizes: csvValues($('companySizes').value),
       remote_preference: $('remotePreference').value || null,
       work_authorization: $('workAuthorization').value.trim() || null,
       salary_min: $('salaryMin').value ? Number($('salaryMin').value) : null,
