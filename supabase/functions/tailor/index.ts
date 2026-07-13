@@ -1,6 +1,7 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
+import { gradeFromScore, validateAtsScore } from "./scoring.js";
 
 // The operator's own keys — never sent to the client, only used server-side.
 // Set via `supabase secrets set ANTHROPIC_API_KEY=...` / `OPENAI_API_KEY=...` / `GEMINI_API_KEY=...`.
@@ -14,8 +15,12 @@ const TAILOR_SCHEMA = {
   properties: {
     tailored_resume: { type: "string" },
     cover_letter: { type: "string" },
+    ats_score: { type: "integer" },
+    matched_skills: { type: "array", items: { type: "string" } },
+    missing_skills: { type: "array", items: { type: "string" } },
+    ats_notes: { type: "string" },
   },
-  required: ["tailored_resume", "cover_letter"],
+  required: ["tailored_resume", "cover_letter", "ats_score", "matched_skills", "missing_skills", "ats_notes"],
   additionalProperties: false,
 };
 
@@ -187,8 +192,11 @@ export default {
     }
 
     const systemPrompt =
-      "You are a career coach. Given a resume and a job posting, produce a tailored resume " +
-      "(rewritten bullets emphasizing relevant experience) and a concise cover letter.";
+      "You are a career coach. Given a resume and a job posting, produce: a tailored resume " +
+      "(rewritten bullets emphasizing relevant experience), a concise cover letter, and an ATS match " +
+      "assessment — a 0-100 score for how well the resume's skills/keywords match the job posting, the " +
+      "specific skills/keywords found in both (matched_skills), the important ones from the posting " +
+      "that are missing from the resume (missing_skills), and a one-sentence note explaining the score.";
     const userPrompt =
       `RESUME:\n${resume.raw_text.slice(0, MAX_INPUT_CHARS)}\n\n` +
       `JOB POSTING (raw page text, may include nav/boilerplate — ignore that):\n${(job.jd_text ?? "").slice(0, MAX_INPUT_CHARS)}`;
@@ -202,6 +210,7 @@ export default {
     let parsed;
     try {
       parsed = await CALL_BY_PROVIDER[provider](resolvedModel, systemPrompt, userPrompt);
+      parsed.ats_score = validateAtsScore(parsed.ats_score);
     } catch (err) {
       return Response.json({ error: (err as Error).message }, { status: 502 });
     }
@@ -224,6 +233,23 @@ export default {
     if (upsertError) {
       return Response.json({ error: upsertError.message }, { status: 500 });
     }
+
+    // Best-effort — the tailored resume/cover letter are the core deliverable
+    // and already saved above; if storing the score fails, don't fail the
+    // whole request over it, just ship without a grade this round.
+    await ctx.supabase
+      .from("job_matches")
+      .upsert(
+        {
+          job_id,
+          cv_match_score: parsed.ats_score,
+          overall_grade: gradeFromScore(parsed.ats_score),
+          matched_skills: parsed.matched_skills,
+          missing_skills: parsed.missing_skills,
+          reasoning: parsed.ats_notes,
+        },
+        { onConflict: "user_id,job_id" },
+      );
 
     return Response.json(application);
   }),

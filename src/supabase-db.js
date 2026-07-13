@@ -21,7 +21,7 @@ async function restRequest(path, accessToken, { method = 'GET', body, extraHeade
 // pagination if usage grows past it rather than raising this silently.
 export async function listJobs(accessToken, fetchImpl = fetch) {
   return restRequest(
-    'jobs?select=id,url,title,company,created_at,applications(status)&order=created_at.desc&limit=100',
+    'jobs?select=id,url,title,company,created_at,applications(status),job_matches(overall_grade,cv_match_score)&order=created_at.desc&limit=100',
     accessToken,
     {},
     fetchImpl,
@@ -31,7 +31,7 @@ export async function listJobs(accessToken, fetchImpl = fetch) {
 // Full row (including jd_text/tailored_resume/cover_letter) for one job —
 // used by the detail view instead of re-fetching and re-scanning the whole list.
 export async function getJob(accessToken, jobId, fetchImpl = fetch) {
-  const rows = await restRequest(`jobs?id=eq.${jobId}&select=*,applications(*)`, accessToken, {}, fetchImpl);
+  const rows = await restRequest(`jobs?id=eq.${jobId}&select=*,applications(*),job_matches(*)`, accessToken, {}, fetchImpl);
   return rows[0] || null;
 }
 
@@ -95,4 +95,19 @@ export async function tailorJob(accessToken, jobId, { provider, model } = {}, fe
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Tailor error ${res.status}`);
   return data;
+}
+
+// Calls the `extract-resume` Edge Function (PDF -> plain text via Anthropic,
+// regardless of the user's tailoring provider preference — see the function's
+// own comment for why). pdfBase64 should be the raw base64 payload, no
+// "data:application/pdf;base64," prefix.
+export async function extractResumeFromPdf(accessToken, pdfBase64, fetchImpl = fetch) {
+  const res = await fetchImpl(`${SUPABASE_URL}/functions/v1/extract-resume`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ pdf_base64: pdfBase64 }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Extract error ${res.status}`);
+  return data.raw_text;
 }

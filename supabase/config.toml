@@ -427,3 +427,17 @@ entrypoint = "./functions/tailor/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/tailor/*.html" ]
+
+[functions.extract-resume]
+enabled = true
+# Requires auth: "user" internally — keep gateway-level JWT verification on
+# too (same reasoning as tailor: reject unauthenticated requests before they
+# reach the function runtime, not just inside it).
+verify_jwt = true
+import_map = "./functions/extract-resume/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/extract-resume/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/extract-resume/*.html" ]

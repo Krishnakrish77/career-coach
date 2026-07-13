@@ -1,6 +1,15 @@
 import { getValidSession } from '../src/supabase-auth.js';
 import { getStorage, setStorage } from '../src/storage.js';
-import { listJobs, getJob, updateApplicationStatus, deleteJob, saveResume, getLatestResume, tailorJob } from '../src/supabase-db.js';
+import {
+  listJobs,
+  getJob,
+  updateApplicationStatus,
+  deleteJob,
+  saveResume,
+  getLatestResume,
+  tailorJob,
+  extractResumeFromPdf,
+} from '../src/supabase-db.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 // Cheapest/lightest model per provider — a cost-conscious default, not a capability pick.
@@ -27,6 +36,22 @@ function labelForStatus(status) {
 
 function applicationOf(job) {
   return (job.applications && job.applications[0]) || { status: 'saved', tailored_resume: null, cover_letter: null };
+}
+
+// null (not a stub object) when no score exists yet — every call site checks
+// for that rather than rendering a fabricated "0%%" or empty grade.
+function jobMatchOf(job) {
+  return (job.job_matches && job.job_matches[0]) || null;
+}
+
+function createGradeBadge(jobMatch) {
+  if (!jobMatch?.overall_grade) return null;
+  const badge = document.createElement('span');
+  badge.className = 'badge';
+  badge.dataset.grade = jobMatch.overall_grade;
+  badge.textContent = jobMatch.overall_grade;
+  badge.title = `ATS match score: ${jobMatch.cv_match_score}/100`;
+  return badge;
 }
 
 function emptyState(text) {
@@ -154,7 +179,10 @@ async function renderJobList() {
 
     titleBlock.append(h3);
     if (company.textContent) titleBlock.appendChild(company);
-    top.append(titleBlock, createPill(application.status));
+    top.appendChild(titleBlock);
+    const gradeBadge = createGradeBadge(jobMatchOf(job));
+    if (gradeBadge) top.appendChild(gradeBadge);
+    top.appendChild(createPill(application.status));
 
     const bottom = document.createElement('div');
     bottom.className = 'job-card-bottom';
@@ -288,6 +316,47 @@ async function renderJobDetail() {
   jdSection.append(jdHeader, jdText);
   card.append(header, actionsRow, tailorStatus, jdSection);
 
+  const jobMatch = jobMatchOf(job);
+  if (jobMatch) {
+    const atsSection = document.createElement('section');
+    atsSection.className = 'detail-section';
+
+    const atsHeader = document.createElement('div');
+    atsHeader.className = 'detail-section-header';
+    const atsTitle = document.createElement('h3');
+    atsTitle.textContent = 'ATS Match';
+    atsHeader.appendChild(atsTitle);
+    const atsBadge = createGradeBadge(jobMatch);
+    if (atsBadge) atsHeader.appendChild(atsBadge);
+
+    const scoreLine = document.createElement('div');
+    scoreLine.className = 'small';
+    scoreLine.textContent = jobMatch.cv_match_score != null
+      ? `${jobMatch.cv_match_score}/100${jobMatch.reasoning ? ' — ' + jobMatch.reasoning : ''}`
+      : 'Not scored yet.';
+
+    atsSection.append(atsHeader, scoreLine);
+
+    if (jobMatch.matched_skills?.length) {
+      const matched = document.createElement('div');
+      matched.className = 'small';
+      const label = document.createElement('strong');
+      label.textContent = 'Matched: ';
+      matched.append(label, document.createTextNode(jobMatch.matched_skills.join(', ')));
+      atsSection.appendChild(matched);
+    }
+    if (jobMatch.missing_skills?.length) {
+      const missing = document.createElement('div');
+      missing.className = 'small';
+      const label = document.createElement('strong');
+      label.textContent = 'Missing: ';
+      missing.append(label, document.createTextNode(jobMatch.missing_skills.join(', ')));
+      atsSection.appendChild(missing);
+    }
+
+    card.appendChild(atsSection);
+  }
+
   if (application.tailored_resume) {
     const outputSection = document.createElement('section');
     outputSection.className = 'detail-section';
@@ -413,6 +482,43 @@ async function loadResume() {
     setStatus('resumeStatus', `Error: ${err.message}`, 'error');
   }
 }
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      // dataURL is "data:application/pdf;base64,<payload>" — the API wants
+      // just the payload.
+      const base64 = String(reader.result).split(',')[1] || '';
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error || new Error('Could not read the file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+$('resumePdfInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  if (file.type !== 'application/pdf') {
+    setStatus('resumePdfStatus', 'Please choose a PDF file.', 'error');
+    e.target.value = '';
+    return;
+  }
+
+  setStatus('resumePdfStatus', 'Extracting text from PDF...');
+  try {
+    const base64 = await readFileAsBase64(file);
+    const rawText = await extractResumeFromPdf(session.accessToken, base64);
+    $('resumeText').value = rawText;
+    setStatus('resumePdfStatus', 'Extracted — review below, then click Save Resume.', 'success');
+  } catch (err) {
+    setStatus('resumePdfStatus', `Error: ${err.message}`, 'error');
+  } finally {
+    e.target.value = '';
+  }
+});
 
 $('saveResume').addEventListener('click', async () => {
   const btn = $('saveResume');

@@ -9,6 +9,7 @@ import {
   saveResume,
   getLatestResume,
   tailorJob,
+  extractResumeFromPdf,
 } from '../src/supabase-db.js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../src/supabase-auth.js';
 
@@ -32,7 +33,7 @@ test('listJobs requests a light column set, capped, newest first', async () => {
   assert.deepEqual(result, [{ id: '1' }]);
   assert.equal(
     calls[0].url,
-    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,created_at,applications(status)&order=created_at.desc&limit=100`,
+    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,created_at,applications(status),job_matches(overall_grade,cv_match_score)&order=created_at.desc&limit=100`,
   );
   assert.equal(calls[0].opts.headers.apikey, SUPABASE_ANON_KEY);
   assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');
@@ -41,7 +42,7 @@ test('listJobs requests a light column set, capped, newest first', async () => {
 test('getJob requests one job by id with the full row', async () => {
   const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'job-1', jd_text: 'full text' }] })]);
   const result = await getJob('token-1', 'job-1', fetchImpl);
-  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/jobs?id=eq.job-1&select=*,applications(*)`);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/jobs?id=eq.job-1&select=*,applications(*),job_matches(*)`);
   assert.equal(result.jd_text, 'full text');
 });
 
@@ -126,4 +127,18 @@ test('tailorJob posts job_id/provider/model to the Edge Function and returns the
 test('tailorJob surfaces the Edge Function error message on failure', async () => {
   const { fetchImpl } = fetchSequence([fakeResponse({ ok: false, status: 400, json: { error: 'No resume on file.' } })]);
   await assert.rejects(() => tailorJob('token-1', 'job-1', {}, fetchImpl), /No resume on file\./);
+});
+
+test('extractResumeFromPdf posts the base64 payload and returns raw_text', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: { raw_text: 'extracted resume text' } })]);
+  const result = await extractResumeFromPdf('token-1', 'BASE64DATA', fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/functions/v1/extract-resume`);
+  assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');
+  assert.deepEqual(JSON.parse(calls[0].opts.body), { pdf_base64: 'BASE64DATA' });
+  assert.equal(result, 'extracted resume text');
+});
+
+test('extractResumeFromPdf surfaces the Edge Function error message on failure', async () => {
+  const { fetchImpl } = fetchSequence([fakeResponse({ ok: false, status: 422, json: { error: 'Could not extract any text from that PDF.' } })]);
+  await assert.rejects(() => extractResumeFromPdf('token-1', 'BASE64DATA', fetchImpl), /Could not extract any text/);
 });
