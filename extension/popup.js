@@ -31,6 +31,29 @@ function popupEmptyState(text) {
   return el;
 }
 
+function openDashboard(jobId) {
+  const url = jobId
+    ? chrome.runtime.getURL(`extension/dashboard.html?job=${encodeURIComponent(jobId)}`)
+    : chrome.runtime.getURL('extension/dashboard.html');
+  chrome.tabs.create({ url });
+}
+
+// RAW-1: link straight to the existing job instead of just saying "duplicate".
+function renderDuplicateNotice(job) {
+  const el = $('captureStatus');
+  el.textContent = '';
+  delete el.dataset.kind;
+  el.append('Already saved — ');
+  const link = document.createElement('a');
+  link.href = '#';
+  link.textContent = 'open it in the dashboard';
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    openDashboard(job.id);
+  });
+  el.appendChild(link);
+}
+
 // ---- Account ----
 function renderAccount() {
   $('accountSignedOut').style.display = session ? 'none' : '';
@@ -187,15 +210,19 @@ $('captureJob').addEventListener('click', async () => {
       target: { tabId: tab.id },
       func: () => document.body.innerText,
     });
-    await insertJob(session.accessToken, {
+    const job = await insertJob(session.accessToken, {
       url: tab.url,
       title: tab.title,
       company: null,
       jd_text: String(pageText || '').slice(0, 12000),
     });
     await renderRecentJobs();
-    setStatus('captureStatus', 'Saved. Open the dashboard to tailor it.', 'success');
-    setTimeout(() => setStatus('captureStatus', ''), 2500);
+    if (job.duplicate) {
+      renderDuplicateNotice(job);
+    } else {
+      setStatus('captureStatus', 'Saved. Open the dashboard to tailor it.', 'success');
+      setTimeout(() => setStatus('captureStatus', ''), 2500);
+    }
   } catch (err) {
     setStatus('captureStatus', `Error: ${err.message}`, 'error');
   } finally {
@@ -205,8 +232,6 @@ $('captureJob').addEventListener('click', async () => {
   }
 });
 
-$('openDashboard').addEventListener('click', () => {
-  chrome.tabs.create({ url: chrome.runtime.getURL('extension/dashboard.html') });
-});
+$('openDashboard').addEventListener('click', () => openDashboard());
 
 loadAccount();

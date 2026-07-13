@@ -15,6 +15,8 @@ Career Coach is a Chrome extension that helps you run a job search: capture post
 
 See [Not built yet](#not-built-yet-honest-roadmap) for what this *isn't* — job-board scanning and the interview story bank are designed for (the schema has room) but not implemented. Fit scoring beyond the CV/ATS dimension (role fit, level fit, comp fit, personalization) is also unimplemented — `job_matches` has columns for them, but only `cv_match_score` is currently computed.
 
+For the product roadmap, market research, and phase-by-phase PRDs, see [docs/prds](docs/prds/README.md).
+
 ## Architecture
 
 ```
@@ -52,8 +54,10 @@ extension/                    Browser extension UI entrypoints and shared CSS
 src/                          Shared extension modules
   storage.js                  chrome.storage.local wrapper
   supabase-auth.js            Auth: signUp/signIn/refreshSession/getValidSession
-  supabase-db.js              Data: listJobs/getJob/insertJob/updateApplicationStatus/
-                               deleteJob/saveResume/getLatestResume/tailorJob/extractResumeFromPdf
+  supabase-db.js              Data: listJobs/getJob/insertJob/updateJob/updateApplicationStatus/
+                               updateApplicationNotes/deleteJob/listResumeVersions/getActiveResume/
+                               saveResumeVersion/activateResumeVersion/listJobArtifacts/tailorJob/
+                               extractResumeFromPdf
 test/*.test.js                Node built-in test runner (node --test), no framework/deps
 icons/                        icon.svg (source) + rasterized PNGs + logo.svg/png
 supabase/migrations/*.sql     Schema, in order — see below
