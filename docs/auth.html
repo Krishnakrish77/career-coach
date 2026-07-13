@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Career Coach — Account</title>
+<style>
+  :root {
+    --bg: #f6f7f4; --surface: #ffffff; --border: #dce3dc; --text: #17202a;
+    --text-muted: #627080; --accent: #0f8b8d; --accent-hover: #0b6f71; --danger: #c24132;
+  }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    font: 15px/1.5 "Inter", system-ui, -apple-system, sans-serif;
+    color: var(--text); background: var(--bg);
+  }
+  .card {
+    width: 360px; padding: 28px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 12px 30px rgba(23, 32, 42, 0.08);
+  }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  p { color: var(--text-muted); margin: 0 0 16px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-top: 12px; }
+  input {
+    width: 100%; box-sizing: border-box; margin-top: 4px; padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: 6px; font: inherit;
+  }
+  button {
+    width: 100%; margin-top: 16px; padding: 9px; border: none; border-radius: 6px;
+    background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .status { margin-top: 12px; font-size: 13px; }
+  .status[data-kind="error"] { color: var(--danger); }
+  .status[data-kind="success"] { color: var(--accent-hover); }
+</style>
+</head>
+<body>
+  <div class="card" id="card"></div>
+
+  <script>
+    // This project is a browser extension with no web app of its own — this
+    // page exists purely as the landing spot GoTrue's email links redirect
+    // to (confirmation and password recovery both need a real URL).
+    const SUPABASE_URL = 'https://tcteyjqttubktygdzmbp.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_2JpXxZ6eTRP5l_hTKP72Sg_AfGTGDWI';
+
+    const card = document.getElementById('card');
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const type = hashParams.get('type');
+    const accessToken = hashParams.get('access_token');
+    const errorDescription = hashParams.get('error_description');
+
+    function render(html) {
+      card.innerHTML = html;
+    }
+
+    if (errorDescription) {
+      render(`
+        <h1>Link expired or invalid</h1>
+        <p>${errorDescription.replace(/\+/g, ' ')}</p>
+        <p>Request a new link from the extension and try again.</p>
+      `);
+    } else if (type === 'recovery' && accessToken) {
+      render(`
+        <h1>Set a new password</h1>
+        <p>Choose a new password for your Career Coach account.</p>
+        <label>New password
+          <input id="newPassword" type="password" autocomplete="new-password" minlength="8">
+        </label>
+        <button id="submitBtn" type="button">Update password</button>
+        <div id="status" class="status"></div>
+      `);
+      document.getElementById('submitBtn').addEventListener('click', async () => {
+        const password = document.getElementById('newPassword').value;
+        const statusEl = document.getElementById('status');
+        const btn = document.getElementById('submitBtn');
+        if (password.length < 8) {
+          statusEl.textContent = 'Password must be at least 8 characters.';
+          statusEl.dataset.kind = 'error';
+          return;
+        }
+        btn.disabled = true;
+        statusEl.textContent = 'Updating...';
+        statusEl.dataset.kind = '';
+        try {
+          const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+            method: 'PUT',
+            headers: {
+              'content-type': 'application/json',
+              apikey: SUPABASE_ANON_KEY,
+              authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ password }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error_description || data.msg || `Error ${res.status}`);
+          render(`
+            <h1>Password updated</h1>
+            <p>Close this tab and log in from the Career Coach extension with your new password.</p>
+          `);
+        } catch (err) {
+          statusEl.textContent = `Error: ${err.message}`;
+          statusEl.dataset.kind = 'error';
+          btn.disabled = false;
+        }
+      });
+    } else if (type === 'signup' || type === 'email_change') {
+      render(`
+        <h1>Email confirmed</h1>
+        <p>Close this tab and log in from the Career Coach extension.</p>
+      `);
+    } else {
+      render(`
+        <h1>Career Coach</h1>
+        <p>This page is only meant to be reached from an email confirmation or password reset link.</p>
+      `);
+    }
+  </script>
+</body>
+</html>
