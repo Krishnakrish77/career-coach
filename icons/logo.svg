@@ -1,0 +1,15 @@
+<svg width="340" height="80" viewBox="0 0 340 80" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14a0a2"/>
+      <stop offset="1" stop-color="#0b6f71"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="80" height="80" rx="18" fill="url(#bg)"/>
+  <line x1="24" y1="56" x2="50" y2="30" stroke="#ffffff" stroke-width="9" stroke-linecap="round"/>
+  <polygon points="60,20 60,40 40,20" fill="#ffffff"/>
+
+  <text x="96" y="38" font-family="Inter, -apple-system, Segoe UI, sans-serif" font-size="26" font-weight="700" fill="#17202a">Career Coach</text>
+  <text x="96" y="60" font-family="Inter, -apple-system, Segoe UI, sans-serif" font-size="14" font-weight="500" fill="#627080">Your AI-powered job search co-pilot</text>
+</svg>

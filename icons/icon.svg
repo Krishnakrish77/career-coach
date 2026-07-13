@@ -1,0 +1,14 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14a0a2"/>
+      <stop offset="1" stop-color="#0b6f71"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="url(#bg)"/>
+
+  <!-- single bold upward arrow: one shape, legible at 16px -->
+  <line x1="38" y1="90" x2="80" y2="48" stroke="#ffffff" stroke-width="15" stroke-linecap="round"/>
+  <polygon points="96,32 96,64 64,32" fill="#ffffff"/>
+</svg>
