@@ -93,7 +93,7 @@ Likely schema additions:
   - `id`
   - `user_id`
   - `job_id`
-  - `resume_version_id`
+  - `resume_id`
   - `status`
   - `created_at`
   - `updated_at`

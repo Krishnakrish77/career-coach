@@ -15,7 +15,7 @@ Career Coach is a Chrome extension that helps you run a job search: capture post
 
 See [Not built yet](#not-built-yet-honest-roadmap) for what this *isn't* — job-board scanning and the interview story bank are designed for (the schema has room) but not implemented. Fit scoring beyond the CV/ATS dimension (role fit, level fit, comp fit, personalization) is also unimplemented — `job_matches` has columns for them, but only `cv_match_score` is currently computed.
 
-For the product roadmap, market research, and phase-by-phase PRDs, see [docs/prds](docs/prds/README.md).
+For the product roadmap, market research, and phase-by-phase PRDs, see [docs/prds](docs/prds/README.md). For known product/engineering follow-up work, see [docs/tech-debt.md](docs/tech-debt.md).
 
 ## Architecture
 
@@ -55,9 +55,8 @@ src/                          Shared extension modules
   storage.js                  chrome.storage.local wrapper
   supabase-auth.js            Auth: signUp/signIn/refreshSession/getValidSession
   supabase-db.js              Data: listJobs/getJob/insertJob/updateJob/updateApplicationStatus/
-                               updateApplicationNotes/deleteJob/listResumeVersions/getActiveResume/
-                               saveResumeVersion/activateResumeVersion/listJobArtifacts/tailorJob/
-                               extractResumeFromPdf
+                               updateApplicationNotes/deleteJob/saveResume/getLatestResume/
+                               listJobArtifacts/tailorJob/extractResumeFromPdf
 test/*.test.js                Node built-in test runner (node --test), no framework/deps
 icons/                        icon.svg (source) + rasterized PNGs + logo.svg/png
 supabase/migrations/*.sql     Schema, in order — see below
@@ -85,7 +84,7 @@ supabase/config.toml          Local Supabase project config (synced to the live 
    supabase link --project-ref <your-project-ref>
    ```
 
-3. **Push the schema.** Applies the three migrations in `supabase/migrations/` (resumes/profiles/jobs/applications/job_matches/interview_stories tables, RLS policies, constraints, indexes).
+3. **Push the schema.** Applies the migrations in `supabase/migrations/` (resumes/profiles/jobs/applications/job_matches/interview_stories tables, RLS policies, constraints, indexes).
    ```
    supabase db push --password '<your-db-password>'
    ```
