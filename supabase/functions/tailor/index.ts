@@ -178,7 +178,8 @@ export default {
     const { data: resume, error: resumeError } = await ctx.supabase
       .from("resumes")
       .select("id, raw_text")
-      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     if (resumeError) {
       return Response.json({ error: resumeError.message }, { status: 500 });
@@ -256,7 +257,7 @@ export default {
     await ctx.supabase.from("job_artifacts").insert([
       {
         job_id,
-        resume_version_id: resume.id,
+        resume_id: resume.id,
         artifact_type: "tailored_resume",
         content: parsed.tailored_resume,
         provider,
@@ -264,7 +265,7 @@ export default {
       },
       {
         job_id,
-        resume_version_id: resume.id,
+        resume_id: resume.id,
         artifact_type: "cover_letter",
         content: parsed.cover_letter,
         provider,

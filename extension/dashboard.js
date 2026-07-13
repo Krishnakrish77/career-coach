@@ -7,10 +7,8 @@ import {
   updateApplicationStatus,
   updateApplicationNotes,
   deleteJob,
-  listResumeVersions,
-  getActiveResume,
-  saveResumeVersion,
-  activateResumeVersion,
+  saveResume,
+  getLatestResume,
   listJobArtifacts,
   tailorJob,
   extractResumeFromPdf,
@@ -724,12 +722,8 @@ $('filterFollowUpDue').addEventListener('change', async (e) => {
 });
 
 // ---- Resume ----
-// Tracks where the text currently in the textarea came from, so "Save as New
-// Version" records accurate source metadata even though the field itself
-// isn't part of the resume text (RAW-4's source_type/source_filename).
-let pendingSourceType = 'text';
-let pendingSourceFilename = null;
-
+// No versioning: the most recently saved resume is always what tailoring
+// uses. Health check is still shown so bad captures get flagged either way.
 function renderHealthCheck(text) {
   const container = $('resumeHealthStatus');
   container.replaceChildren();
@@ -741,67 +735,10 @@ function renderHealthCheck(text) {
   }
 }
 
-async function renderResumeVersions() {
-  const list = $('resumeVersionList');
-  list.replaceChildren();
-
-  let versions;
-  try {
-    versions = await listResumeVersions(session.accessToken);
-  } catch (err) {
-    list.appendChild(emptyState(`Could not load resume versions: ${err.message}`));
-    return;
-  }
-
-  if (versions.length === 0) {
-    list.appendChild(emptyState('No resume versions yet — save one below.'));
-    return;
-  }
-
-  for (const version of versions) {
-    const item = document.createElement('div');
-    item.className = 'resume-version-item';
-    item.dataset.active = version.is_active ? 'true' : 'false';
-
-    const label = document.createElement('span');
-    label.className = 'small';
-    const when = formatDateTime(version.created_at);
-    label.textContent = `${version.label || (version.source_type === 'pdf' ? 'Uploaded PDF' : 'Untitled version')}${when ? ' — ' + when : ''}`;
-
-    if (version.is_active) {
-      const activeTag = document.createElement('strong');
-      activeTag.textContent = 'Active';
-      item.append(label, activeTag);
-    } else {
-      const activateBtn = document.createElement('button');
-      activateBtn.type = 'button';
-      activateBtn.className = 'subtle';
-      activateBtn.textContent = 'Activate';
-      activateBtn.addEventListener('click', async () => {
-        activateBtn.disabled = true;
-        try {
-          await activateResumeVersion(session.accessToken, version.id);
-          await loadResume();
-          await renderResumeVersions();
-        } catch (err) {
-          setStatus('resumeStatus', `Error: ${err.message}`, 'error');
-          activateBtn.disabled = false;
-        }
-      });
-      item.append(label, activateBtn);
-    }
-
-    list.appendChild(item);
-  }
-}
-
 async function loadResume() {
   try {
-    const resume = await getActiveResume(session.accessToken);
+    const resume = await getLatestResume(session.accessToken);
     $('resumeText').value = resume ? resume.raw_text : '';
-    $('resumeLabel').value = '';
-    pendingSourceType = 'text';
-    pendingSourceFilename = null;
     renderHealthCheck($('resumeText').value);
   } catch (err) {
     setStatus('resumeStatus', `Error: ${err.message}`, 'error');
@@ -839,10 +776,8 @@ $('resumePdfInput').addEventListener('change', async (e) => {
     const base64 = await readFileAsBase64(file);
     const rawText = await extractResumeFromPdf(session.accessToken, base64);
     $('resumeText').value = rawText;
-    pendingSourceType = 'pdf';
-    pendingSourceFilename = file.name;
     renderHealthCheck(rawText);
-    setStatus('resumePdfStatus', 'Extracted — review below, then save as a new version.', 'success');
+    setStatus('resumePdfStatus', 'Extracted — review below, then click Save Resume.', 'success');
   } catch (err) {
     setStatus('resumePdfStatus', `Error: ${err.message}`, 'error');
   } finally {
@@ -855,18 +790,9 @@ $('saveResume').addEventListener('click', async () => {
   btn.disabled = true;
   setStatus('resumeStatus', 'Saving...');
   try {
-    await saveResumeVersion(session.accessToken, {
-      rawText: $('resumeText').value,
-      label: $('resumeLabel').value.trim() || null,
-      sourceType: pendingSourceType,
-      sourceFilename: pendingSourceFilename,
-    });
-    pendingSourceType = 'text';
-    pendingSourceFilename = null;
-    $('resumeLabel').value = '';
+    await saveResume(session.accessToken, $('resumeText').value);
     setStatus('resumeStatus', 'Saved.', 'success');
     setTimeout(() => setStatus('resumeStatus', ''), 1500);
-    await renderResumeVersions();
   } catch (err) {
     setStatus('resumeStatus', `Error: ${err.message}`, 'error');
   } finally {
@@ -913,7 +839,6 @@ async function init() {
   await renderJobList();
   await renderJobDetail();
   loadResume();
-  renderResumeVersions();
   loadSettings();
 }
 

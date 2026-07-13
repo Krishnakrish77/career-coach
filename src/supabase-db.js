@@ -19,10 +19,6 @@ async function restRequest(path, accessToken, { method = 'GET', body, extraHeade
   return res.status === 204 ? null : res.json();
 }
 
-function unwrapRpcResult(result) {
-  return Array.isArray(result) ? result[0] : result;
-}
-
 async function getDuplicateByExactUrl(accessToken, url, fetchImpl) {
   const rows = await restRequest(
     `jobs?url=eq.${encodeURIComponent(url)}&select=${JOB_LIST_SELECT}&limit=1`,
@@ -32,16 +28,6 @@ async function getDuplicateByExactUrl(accessToken, url, fetchImpl) {
   );
   const existing = rows[0] || null;
   return existing?.applications?.length ? existing : null;
-}
-
-async function activateResumeVersionRpc(accessToken, resumeId, fetchImpl) {
-  const result = await restRequest(
-    'rpc/activate_resume_version',
-    accessToken,
-    { method: 'POST', body: { p_resume_id: resumeId } },
-    fetchImpl,
-  );
-  return unwrapRpcResult(result);
 }
 
 // Light projection for list rendering — no jd_text/tailored_resume/cover_letter,
@@ -155,48 +141,27 @@ export async function deleteJob(accessToken, jobId, fetchImpl = fetch) {
   return restRequest(`jobs?id=eq.${jobId}`, accessToken, { method: 'DELETE' }, fetchImpl);
 }
 
-// RAW-4: resumes are versioned, with exactly one active version per user
-// (enforced by a partial unique index). Activation happens through a DB RPC so
-// the active-version swap is transactional.
-export async function listResumeVersions(accessToken, fetchImpl = fetch) {
-  return restRequest(
-    'resumes?select=id,label,source_type,source_filename,is_active,created_at&order=created_at.desc',
+// No versioning: each save just inserts another row, and the most recent one
+// is always the source of truth. Simpler than exposing version management,
+// per product decision.
+export async function saveResume(accessToken, rawText, fetchImpl = fetch) {
+  const [resume] = await restRequest(
+    'resumes',
     accessToken,
-    {},
+    { method: 'POST', body: { raw_text: rawText }, extraHeaders: { prefer: 'return=representation' } },
     fetchImpl,
   );
+  return resume;
 }
 
-export async function getActiveResume(accessToken, fetchImpl = fetch) {
+export async function getLatestResume(accessToken, fetchImpl = fetch) {
   const rows = await restRequest(
-    'resumes?is_active=eq.true&select=id,raw_text,label,created_at&limit=1',
+    'resumes?select=id,raw_text,created_at&order=created_at.desc&limit=1',
     accessToken,
     {},
     fetchImpl,
   );
   return rows[0] || null;
-}
-
-export async function saveResumeVersion(
-  accessToken,
-  { rawText, label = null, sourceType = 'text', sourceFilename = null },
-  fetchImpl = fetch,
-) {
-  const [resume] = await restRequest(
-    'resumes',
-    accessToken,
-    {
-      method: 'POST',
-      body: { raw_text: rawText, label, source_type: sourceType, source_filename: sourceFilename, is_active: false },
-      extraHeaders: { prefer: 'return=representation' },
-    },
-    fetchImpl,
-  );
-  return activateResumeVersionRpc(accessToken, resume.id, fetchImpl);
-}
-
-export async function activateResumeVersion(accessToken, resumeId, fetchImpl = fetch) {
-  return activateResumeVersionRpc(accessToken, resumeId, fetchImpl);
 }
 
 // RAW-6/RAW-7: history of tailoring generations for one job, newest first.
