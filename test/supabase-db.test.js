@@ -50,7 +50,7 @@ test('listJobs requests a light column set, capped, newest first', async () => {
   assert.deepEqual(result, [{ id: '1' }]);
   assert.equal(
     calls[0].url,
-    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)&order=created_at.desc&limit=100`,
+    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,source,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)&order=created_at.desc&limit=100`,
   );
   assert.equal(calls[0].opts.headers.apikey, SUPABASE_ANON_KEY);
   assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');

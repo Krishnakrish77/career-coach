@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-auth.js';
 import { normalizeUrl, hashContent, computeCaptureQuality } from './job-utils.js';
 
 const JOB_LIST_SELECT =
-  'id,url,title,company,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)';
+  'id,url,title,company,source,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)';
 
 async function restRequest(path, accessToken, { method = 'GET', body, extraHeaders = {} } = {}, fetchImpl = fetch) {
   const res = await fetchImpl(`${SUPABASE_URL}/rest/v1/${path}`, {
