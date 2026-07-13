@@ -71,9 +71,20 @@ export function buildOpportunityScorecard({ job = {}, match = {}, preferences = 
     requiredSkills ? `${requiredSkills} skill${requiredSkills === 1 ? '' : 's'} appears missing from the current resume.` : 'No confirmed required-skill gaps are available yet.');
 
   const targetTitles = preferences.target_titles || [];
-  const titleFit = targetTitles.length ? (includesAny(job.title, targetTitles) ? 100 : 45) : 60;
-  add('seniority_fit', 'Role and seniority fit', titleFit, targetTitles.length ? 'medium' : 'low',
-    targetTitles.length ? (titleFit === 100 ? 'Title matches one of your targets.' : 'Title does not directly match your saved targets.') : 'Add target titles to personalize this factor.');
+  const seniorityTargets = preferences.seniority_targets || [];
+  const titleChecks = [];
+  if (targetTitles.length) titleChecks.push(includesAny(job.title, targetTitles));
+  if (seniorityTargets.length) titleChecks.push(includesAny(job.title, seniorityTargets));
+  const titleHitRate = titleChecks.length ? titleChecks.filter(Boolean).length / titleChecks.length : null;
+  const titleFit = titleHitRate == null ? 60 : titleHitRate === 1 ? 100 : titleHitRate === 0 ? 45 : 70;
+  const titleFitExplanation = titleHitRate == null
+    ? 'Add target titles or seniority targets to personalize this factor.'
+    : titleHitRate === 1
+      ? 'Title matches your saved targets.'
+      : titleHitRate === 0
+        ? 'Title does not directly match your saved targets.'
+        : 'Title partially matches your saved targets.';
+  add('seniority_fit', 'Role and seniority fit', titleFit, titleChecks.length ? 'medium' : 'low', titleFitExplanation);
 
   const remotePreference = preferences.remote_preference;
   let locationScore = 60;

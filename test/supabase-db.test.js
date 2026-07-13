@@ -225,7 +225,17 @@ test('interview stories save through the private story-bank endpoint', async () 
   const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'story-1' }] })]);
   await saveInterviewStory('token-1', { title: 'Launch', skills: ['leadership'] }, fetchImpl);
   assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/interview_stories`);
+  assert.equal(calls[0].opts.method, 'POST');
   assert.equal(JSON.parse(calls[0].opts.body).title, 'Launch');
+});
+
+test('saveInterviewStory PATCHes an existing story by id instead of creating a new one', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'story-1', title: 'Launch v2' }] })]);
+  const result = await saveInterviewStory('token-1', { id: 'story-1', title: 'Launch v2', skills: ['leadership'] }, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/interview_stories?id=eq.story-1`);
+  assert.equal(calls[0].opts.method, 'PATCH');
+  assert.equal(JSON.parse(calls[0].opts.body).id, undefined);
+  assert.equal(result.title, 'Launch v2');
 });
 
 test('weekly plan saves its header and user-owned items separately', async () => {

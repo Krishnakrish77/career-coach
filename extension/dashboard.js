@@ -58,6 +58,7 @@ let recommendationFilter = 'all';
 let interviewStories = [];
 let coachGoals = null;
 let selectedPracticeQuestion = '';
+let editingStoryId = null;
 
 function setStatusElement(el, message, kind = '') {
   el.textContent = message;
@@ -1081,6 +1082,24 @@ $('importDiscovery').addEventListener('click', async () => {
 });
 
 // ---- Interview acceleration (PRD 4) ----
+const STORY_TEXT_FIELDS = { storyTitle: 'title', storySituation: 'situation', storyTask: 'task', storyAction: 'action', storyResult: 'result', storyReflection: 'reflection' };
+
+function clearStoryForm() {
+  Object.keys(STORY_TEXT_FIELDS).forEach((id) => { $(id).value = ''; });
+  $('storySkills').value = ''; $('storyThemes').value = ''; $('storySensitive').checked = false;
+  editingStoryId = null; $('saveStory').textContent = 'Save Story'; $('cancelStoryEdit').style.display = 'none';
+}
+
+function startEditingStory(story) {
+  editingStoryId = story.id;
+  for (const [id, field] of Object.entries(STORY_TEXT_FIELDS)) $(id).value = story[field] || '';
+  $('storySkills').value = (story.skills || []).join(', ');
+  $('storyThemes').value = (story.themes || []).join(', ');
+  $('storySensitive').checked = Boolean(story.is_sensitive);
+  $('saveStory').textContent = 'Update Story'; $('cancelStoryEdit').style.display = '';
+  $('storyTitle').focus();
+}
+
 function renderStories() {
   const list = $('storyList'); list.replaceChildren();
   if (!interviewStories.length) return list.appendChild(emptyState('No stories yet. Add only real examples you are comfortable practicing.'));
@@ -1088,9 +1107,11 @@ function renderStories() {
     const card = document.createElement('div'); card.className = 'card stack compact';
     const title = document.createElement('strong'); title.textContent = story.title;
     const detail = document.createElement('div'); detail.className = 'small'; detail.textContent = `${story.skills?.join(', ') || 'No skills tagged'}${story.is_sensitive ? ' · private' : ''}`;
+    const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'subtle'; edit.textContent = 'Edit';
+    edit.addEventListener('click', () => startEditingStory(story));
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'subtle'; remove.textContent = 'Delete';
-    remove.addEventListener('click', async () => { if (!confirm('Delete this story?')) return; try { await deleteInterviewStory(session.accessToken, story.id); await loadInterview(); } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); } });
-    card.append(title, detail, remove); list.appendChild(card);
+    remove.addEventListener('click', async () => { if (!confirm('Delete this story?')) return; try { await deleteInterviewStory(session.accessToken, story.id); if (editingStoryId === story.id) clearStoryForm(); await loadInterview(); } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); } });
+    card.append(title, detail, edit, remove); list.appendChild(card);
   }
 }
 
@@ -1122,10 +1143,11 @@ async function renderLikelyQuestions() {
 $('saveStory').addEventListener('click', async () => {
   const btn = $('saveStory'); const title = $('storyTitle').value.trim(); if (!title) return setStatus('storyStatus', 'Add a story title.', 'error');
   btn.disabled = true; try {
-    await saveInterviewStory(session.accessToken, { title, situation: $('storySituation').value, task: $('storyTask').value, action: $('storyAction').value, result: $('storyResult').value, reflection: $('storyReflection').value, skills: csvValues($('storySkills').value), themes: csvValues($('storyThemes').value), source_type: 'user_created', confidence: 'user_confirmed', is_sensitive: $('storySensitive').checked });
-    ['storyTitle', 'storySituation', 'storyTask', 'storyAction', 'storyResult', 'storyReflection', 'storySkills', 'storyThemes'].forEach((id) => { $(id).value = ''; }); $('storySensitive').checked = false; setStatus('storyStatus', 'Story saved.', 'success'); await loadInterview();
+    await saveInterviewStory(session.accessToken, { ...(editingStoryId ? { id: editingStoryId } : {}), title, situation: $('storySituation').value, task: $('storyTask').value, action: $('storyAction').value, result: $('storyResult').value, reflection: $('storyReflection').value, skills: csvValues($('storySkills').value), themes: csvValues($('storyThemes').value), source_type: 'user_created', confidence: 'user_confirmed', is_sensitive: $('storySensitive').checked });
+    clearStoryForm(); setStatus('storyStatus', 'Story saved.', 'success'); await loadInterview();
   } catch (err) { setStatus('storyStatus', `Error: ${err.message}`, 'error'); } finally { btn.disabled = false; }
 });
+$('cancelStoryEdit').addEventListener('click', () => { clearStoryForm(); setStatus('storyStatus', ''); });
 $('interviewJob').addEventListener('change', renderLikelyQuestions);
 $('reviewPractice').addEventListener('click', async () => {
   const question = selectedPracticeQuestion || 'Tell me about a relevant example.'; const answer = $('practiceAnswer').value; const feedback = reviewPracticeAnswer(answer, question); $('practiceFeedback').textContent = feedback.feedback.join(' ');

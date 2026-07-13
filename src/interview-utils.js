@@ -34,6 +34,7 @@ export function reviewPracticeAnswer(answer, question = '') {
     if (!/\b(i|my)\b/i.test(text)) feedback.push('Make your own contribution explicit using “I”.');
     if (!/\b(\d+|%|percent|reduced|increased|improved|saved|grew)\b/i.test(text)) feedback.push('Add a verified result or observable outcome if you have one.');
     if (!/\b(situation|challenge|task|action|result|learned)\b/i.test(text)) feedback.push('Use a simple situation → action → result structure.');
+    if (!feedback.length) feedback.push('This reads clearly, with a concrete outcome and a structured story — good to go.');
   }
   return { word_count: count, feedback, question_focus: question.slice(0, 180), scope: 'Preparation feedback only; it does not assess personality, accent, appearance, or live interview performance.' };
 }
