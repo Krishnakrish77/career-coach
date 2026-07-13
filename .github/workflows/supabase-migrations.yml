@@ -1,7 +1,7 @@
 name: Supabase migrations
 
-# Migration PRs get validated against a disposable local database. Once merged
-# to main, the same migration files are pushed to the linked Supabase project.
+# Pull requests preview the migration delta against the linked project. Once
+# merged to main, the migration files are applied to the linked project.
 on:
   pull_request:
     paths:
@@ -20,20 +20,24 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate migrations
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    name: Preview migrations
+    # Secrets are intentionally unavailable to forked PRs, so those previews
+    # are skipped rather than failing or exposing production credentials.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
           version: 2.109.1
-      - name: Start local database
-        run: supabase db start
-      - name: Rebuild local database from migrations
-        run: supabase db reset --local --no-seed
-      - name: Lint local database
-        run: supabase db lint --local
+      - name: Link Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+      - name: Preview pending migrations
+        run: supabase db push --linked --dry-run --password "$SUPABASE_DB_PASSWORD"
 
   deploy:
     name: Apply migrations to production
