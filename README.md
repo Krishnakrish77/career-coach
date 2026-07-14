@@ -8,7 +8,7 @@ Career Coach is a Chrome extension that helps you run a job search: capture post
 
 - **Capture** — one click in the popup saves the current tab's job posting text, dedupes by normalized URL, and flags capture quality
 - **Tailor** — generates a tailored resume + cover letter per job via the server-controlled hosted model
-- **ATS match + opportunity triage** — tailoring creates ATS match output, and the dashboard can assess broader fit, quality, confidence, and recommended next action
+- **ATS simulation + opportunity triage** — job detail shows a deterministic ATS-style simulation with parse readiness, hard-gate checks, keyword/search evidence, and broader fit/quality triage
 - **Resume upload** — paste text, or upload a PDF; scanned/image-only PDFs are flagged because they are poor ATS inputs
 - **Application packets** — create review-required packets with resume, cover letter, recruiter note, LinkedIn note, short answer, copy/text/DOCX/PDF export, and submission tracking
 - **Discovery queue** — manually import public jobs, score them against preferences, and like/save/skip/hide recommendations before they enter the tracker
@@ -31,6 +31,7 @@ Extension (Chrome, MV3)
 └─ src/
    ├─ storage.js                         — chrome.storage.local wrapper for the auth session
    ├─ supabase-auth.js                   — email/password auth against Supabase's GoTrue REST API
+   ├─ ats-utils.js                       — deterministic ATS-style parse, gate, keyword, and searchability simulation
    └─ supabase-db.js                     — PostgREST calls (jobs/resumes/applications) + calls the `tailor`/`extract-resume` Edge Functions
 
 Supabase
@@ -39,11 +40,11 @@ Supabase
 ├─ Edge Function `tailor` — runs the LLM call server-side with the operator's own API key
 │  and server-controlled provider/model config, so no LLM key or raw model choice ever lives
 │  in the browser. Enforces a model allowlist, a per-job debounce,
-│  a per-user hourly cap before spending on a call, and also computes the ATS match score
+│  a per-user hourly cap before spending on a call, and also computes the tailoring match score
 │  (stored in `job_matches`) as part of the same call.
-└─ Edge Function `extract-resume` — checks whether a PDF has a detectable text layer,
-   blocks scanned/OCR-dependent resumes as not ATS-safe, then extracts text. This should
-   move to parser-first extraction; AI extraction is only a temporary fallback path.
+└─ Edge Function `extract-resume` — flags PDFs whose text layer cannot be confirmed,
+   then extracts text for user review. This should move to parser-first extraction;
+   AI extraction is only a temporary fallback path.
 ```
 
 Why a backend at all, for a browser extension: RLS is what makes per-user data isolation real (not just "the UI happens to filter"), and moving the LLM call server-side means the operator's API key — not each user's own — pays for tailoring, which is what makes signup viable for people who don't have their own Anthropic/OpenAI account.
@@ -59,6 +60,7 @@ extension/                    Browser extension UI entrypoints and shared CSS
 src/                          Shared extension modules
   storage.js                  chrome.storage.local wrapper
   supabase-auth.js            Auth: signUp/signIn/refreshSession/getValidSession
+  ats-utils.js                ATS-style simulator: parse readiness, hard gates, keyword evidence, search terms
   supabase-db.js              Data: listJobs/getJob/insertJob/updateJob/updateApplicationStatus/
                                updateApplicationNotes/deleteJob/saveResume/getLatestResume/
                                listJobArtifacts/tailorJob/extractResumeFromPdf
@@ -125,7 +127,7 @@ Signup is invite-only on the hosted project (public self-signup is disabled — 
 1. Open the popup, log in.
 2. Browse to a job posting, click **Save current tab**.
 3. Click **Open dashboard →**. In the **Resume** tab, paste your resume once.
-4. In the **Jobs** tab, assess the opportunity, tailor the resume + cover letter, and create an application packet.
+4. In the **Jobs** tab, review the ATS simulation, assess the opportunity, tailor the resume + cover letter, and create an application packet.
 5. Track status, notes, follow-up dates, interview prep, and weekly plan actions from the dashboard.
 
 Forgot your password? Use the "Forgot password?" link in the popup — same `docs/auth.html` page handles both invite and password-reset links.
@@ -182,7 +184,7 @@ The foundation is broader now, but these are still not production-complete:
 
 - Automated job-source ingestion or broad job-board scanning. Discovery is currently user-imported/manual.
 - Rich preference learning from accumulated liked/skipped/applied jobs. Current scoring is deterministic and early.
-- Parser-first PDF extraction. Scanned/OCR-dependent PDFs are blocked today, but text-layer PDFs still use a temporary AI extraction path.
+- Parser-first PDF extraction. PDFs whose text layer cannot be confirmed are flagged for review today, while text-layer PDFs still use a temporary AI extraction path.
 - Deep grounded generation for packet items beyond the tailored resume and cover letter. Some packet content is still template-based and review-required.
 - Social/profile enrichment implementation. The PRD exists, but the import/consent/revocation flow is not built.
 - Self-service account/data deletion in the extension.

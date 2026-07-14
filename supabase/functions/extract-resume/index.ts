@@ -29,12 +29,11 @@ export default {
     if (atsReadiness.status === "blocked") {
       return Response.json(
         {
-          code: "ocr_pdf_not_ats_safe",
-          error:
-            "This PDF appears to be scanned, image-only, or OCR-dependent. It is unlikely to survive ATS parsing. Export a text-based PDF from your resume editor or paste the verified resume text instead.",
+          code: atsReadiness.code || "invalid_pdf",
+          error: "The uploaded file is not a valid PDF. Choose a PDF file or paste the verified resume text instead.",
           ats_readiness: atsReadiness,
         },
-        { status: atsReadiness.issues.some((issue: string) => issue.includes("not a valid PDF")) ? 400 : 422 },
+        { status: 400 },
       );
     }
 

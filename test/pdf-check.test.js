@@ -20,7 +20,7 @@ endobj
   assert.equal(result.has_text_layer, true);
 });
 
-test('ATS readiness blocks scanned or OCR-dependent image-only PDFs', () => {
+test('ATS readiness warns instead of blocking an image-only PDF because a byte scan cannot prove it lacks text', () => {
   const result = analyzePdfAtsReadiness(pdfBase64(`%PDF-1.7
 1 0 obj
 << /Type /Page /Resources << /XObject << /Im1 2 0 R >> >> >>
@@ -33,9 +33,24 @@ endstream
 endobj
 %%EOF`));
 
-  assert.equal(result.status, 'blocked');
+  assert.equal(result.status, 'warn');
   assert.equal(result.has_text_layer, false);
-  assert.match(result.issues.join(' '), /No selectable text layer/);
+  assert.match(result.warnings.join(' '), /could not be confirmed/);
+});
+
+test('ATS readiness warns rather than blocking PDFs whose selectable text is not visible in raw bytes', () => {
+  const result = analyzePdfAtsReadiness(pdfBase64('%PDF-1.7\n1 0 obj\n<< /Type /Page >>\nendobj\n%%EOF'));
+
+  assert.equal(result.status, 'warn');
+  assert.equal(result.has_text_layer, false);
+});
+
+test('ATS readiness reports malformed Base64 as a blocked invalid upload', () => {
+  const result = analyzePdfAtsReadiness('not valid base64!');
+
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.code, 'invalid_pdf_encoding');
+  assert.match(result.issues.join(' '), /Base64/);
 });
 
 test('ATS readiness warns on image-heavy PDFs that still have text', () => {

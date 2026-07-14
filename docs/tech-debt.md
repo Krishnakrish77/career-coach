@@ -46,7 +46,7 @@ Created: 2026-07-13
 
 ### Context
 
-The current PDF upload flow now blocks PDFs with no detectable text layer before extraction, which prevents scanned or OCR-dependent resumes from being silently converted by AI. That is the right product behavior because image-based resumes are poor ATS inputs.
+The current PDF upload flow flags PDFs without an obvious text layer before extraction. It does not hard-block them because a raw-byte check cannot reliably distinguish compressed/object-stream text PDFs from scanned resumes. Image-based resumes are still poor ATS inputs and require careful review.
 
 However, text-layer PDFs still use a temporary AI extraction fallback. That is overkill for normal resumes: deterministic PDF text extraction should be cheaper, faster, more private, and easier to reason about.
 
@@ -60,7 +60,7 @@ However, text-layer PDFs still use a temporary AI extraction fallback. That is o
 
 ### Acceptance Criteria
 
-- [x] Block PDFs with no detectable text layer before any AI/provider call.
+- [x] Flag PDFs with no obvious text layer before extraction without falsely rejecting compressed/object-stream PDFs.
 - [x] Warn on image-heavy PDFs that still expose a text layer.
 - [ ] Add parser-first extraction for embedded PDF text.
 - [ ] Keep the AI fallback behind an explicit server-side flag or remove it.
