@@ -50,6 +50,7 @@ import { buildLikelyQuestions, extractStorySeeds, matchStoriesToQuestion, review
 import { buildCoachingPlan, weekStart } from '../src/coaching-utils.js';
 import { createDocx } from '../src/docx-utils.js';
 import { atsStatusLabel, buildAtsSimulation } from '../src/ats-utils.js';
+import { buildApplicationDecisionBrief } from '../src/decision-brief-utils.js';
 import { buildOnboardingSteps, nextIncompleteOnboardingStep, ONBOARDING_VERSION } from '../src/onboarding-utils.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
@@ -269,6 +270,47 @@ function renderAtsSimulationSection(simulation) {
 
   section.append(header, summary, metrics, gates, evidenceTitle, evidenceList);
   if (simulation.recruiter_search_terms.length) section.appendChild(searchTerms);
+  return section;
+}
+
+function renderApplicationDecisionBrief(brief) {
+  const section = document.createElement('section');
+  section.className = 'detail-section stack';
+  const header = document.createElement('div');
+  header.className = 'detail-section-header';
+  const title = document.createElement('h3');
+  title.textContent = 'Application Decision';
+  header.appendChild(title);
+  const headline = document.createElement('div');
+  headline.className = 'small';
+  headline.textContent = brief.headline;
+  section.append(header, headline);
+
+  const blocks = [
+    ['Role summary', brief.role],
+    ['Evidence of fit', brief.evidence],
+    ['Gaps and risks', brief.gaps],
+    ['Preference fit', brief.preferences],
+    ['Posting health', brief.health],
+    ['Suggested next step', [brief.next_action]],
+  ];
+  for (const [label, details] of blocks) {
+    const block = document.createElement('div');
+    block.className = 'decision-brief-block';
+    const heading = document.createElement('h4');
+    heading.textContent = label;
+    block.appendChild(heading);
+    for (const item of details) {
+      const row = document.createElement('div');
+      row.className = 'small decision-brief-item';
+      row.dataset.tone = item.tone;
+      const itemLabel = document.createElement('strong');
+      itemLabel.textContent = `${item.label}: `;
+      row.append(itemLabel, document.createTextNode(item.text));
+      block.appendChild(row);
+    }
+    section.appendChild(block);
+  }
   return section;
 }
 
@@ -813,6 +855,13 @@ async function renderJobDetail(editing = false) {
   }
 
   const jobMatch = jobMatchOf(job);
+  const atsSimulation = buildAtsSimulation({
+    job,
+    resumeText: latestResume?.raw_text || '',
+    preferences: profilePreferences || {},
+  });
+  const storedCard = jobMatch?.score_explanation?.factors ? jobMatch.score_explanation : null;
+  card.appendChild(renderApplicationDecisionBrief(buildApplicationDecisionBrief({ job, scorecard: storedCard, atsSimulation })));
 
   // PRD 2: scorecards stay explainable. A user explicitly triggers this
   // deterministic calculation, then it is persisted for queueing later.
@@ -829,7 +878,6 @@ async function renderJobDetail(editing = false) {
   triageHeader.append(triageTitle, triageBtn);
   const triageStatus = document.createElement('div');
   triageStatus.className = 'status-line';
-  const storedCard = jobMatch?.score_explanation?.factors ? jobMatch.score_explanation : null;
   const renderScorecard = (scorecard) => {
     const box = document.createElement('div');
     box.className = 'scorecard stack compact';
@@ -910,11 +958,6 @@ async function renderJobDetail(editing = false) {
 
   card.appendChild(triageSection);
 
-  const atsSimulation = buildAtsSimulation({
-    job,
-    resumeText: latestResume?.raw_text || '',
-    preferences: profilePreferences || {},
-  });
   card.appendChild(renderAtsSimulationSection(atsSimulation));
 
   const packetSection = document.createElement('section');

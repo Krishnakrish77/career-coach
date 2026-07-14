@@ -337,6 +337,21 @@ button.subtle {
   color: var(--warning);
 }
 
+.decision-brief-block {
+  display: grid;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.decision-brief-block h4 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.decision-brief-item[data-tone="positive"] strong { color: var(--success); }
+.decision-brief-item[data-tone="warning"] strong { color: var(--warning); }
+
 .pill[data-ats-status="ready"] {
   background: var(--success-soft);
   color: var(--success);
