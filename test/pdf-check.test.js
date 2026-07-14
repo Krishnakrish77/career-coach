@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzePdfAtsReadiness } from '../supabase/functions/extract-resume/pdf-check.js';
+import { analyzePdfAtsReadiness, decodePdfBase64 } from '../supabase/functions/extract-resume/pdf-check.js';
 
 function pdfBase64(source) {
   return Buffer.from(source, 'latin1').toString('base64');
@@ -51,6 +51,11 @@ test('ATS readiness reports malformed Base64 as a blocked invalid upload', () =>
   assert.equal(result.status, 'blocked');
   assert.equal(result.code, 'invalid_pdf_encoding');
   assert.match(result.issues.join(' '), /Base64/);
+});
+
+test('decodePdfBase64 accepts a data URL payload and rejects malformed input', () => {
+  assert.deepEqual([...decodePdfBase64('data:application/pdf;base64,JVBERg==')], [37, 80, 68, 70]);
+  assert.equal(decodePdfBase64('not valid base64!'), null);
 });
 
 test('ATS readiness warns on image-heavy PDFs that still have text', () => {

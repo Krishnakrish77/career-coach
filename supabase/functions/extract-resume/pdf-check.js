@@ -1,4 +1,4 @@
-function decodeBase64(base64) {
+export function decodePdfBase64(base64) {
   const clean = String(base64 || '').replace(/^data:application\/pdf;base64,/, '').replace(/\s/g, '');
   if (!clean) return null;
   let binary;
@@ -21,7 +21,7 @@ function count(pattern, value) {
 }
 
 export function analyzePdfAtsReadiness(pdfBase64) {
-  const bytes = decodeBase64(pdfBase64);
+  const bytes = decodePdfBase64(pdfBase64);
   if (!bytes) {
     return {
       status: 'blocked',

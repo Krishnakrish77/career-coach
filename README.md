@@ -42,9 +42,9 @@ Supabase
 │  in the browser. Enforces a model allowlist, a per-job debounce,
 │  a per-user hourly cap before spending on a call, and also computes the tailoring match score
 │  (stored in `job_matches`) as part of the same call.
-└─ Edge Function `extract-resume` — flags PDFs whose text layer cannot be confirmed,
-   then extracts text for user review. This should move to parser-first extraction;
-   AI extraction is only a temporary fallback path.
+└─ Edge Function `extract-resume` — extracts embedded/selectable text with a parser,
+   flags low-confidence PDFs for review, and keeps the legacy AI fallback disabled
+   unless an operator explicitly enables it.
 ```
 
 Why a backend at all, for a browser extension: RLS is what makes per-user data isolation real (not just "the UI happens to filter"), and moving the LLM call server-side means the operator's API key — not each user's own — pays for tailoring, which is what makes signup viable for people who don't have their own Anthropic/OpenAI account.
@@ -76,7 +76,7 @@ supabase/config.toml          Local Supabase project config (synced to the live 
 - [Node.js](https://nodejs.org) 18+ (for running tests — the extension itself ships no build step)
 - Chrome (or any Chromium-based browser that supports MV3 extensions)
 - [Supabase CLI](https://supabase.com/docs/guides/cli) (`brew install supabase/tap/supabase` on macOS)
-- A Supabase project and an API key for the server-selected tailoring provider. `ANTHROPIC_API_KEY` is also required while PDF extraction still uses the temporary AI fallback.
+- A Supabase project and an API key for the server-selected tailoring provider. `ANTHROPIC_API_KEY` is only needed for the optional PDF extraction fallback.
 
 ## Setup
 
@@ -96,7 +96,7 @@ supabase/config.toml          Local Supabase project config (synced to the live 
    supabase db push --password '<your-db-password>'
    ```
 
-4. **Set the operator's LLM key(s) as Edge Function secrets.** `ANTHROPIC_API_KEY` is required while PDF extraction still uses the temporary AI fallback, and it is also the default tailoring provider. Set `TAILOR_PROVIDER` / `TAILOR_MODEL` only when the hosted deployment should use a different allowlisted model.
+4. **Set the operator's LLM key(s) as Edge Function secrets.** `ANTHROPIC_API_KEY` is the default tailoring-provider key and is only used for PDF extraction if the optional `ENABLE_AI_PDF_FALLBACK=true` fallback is enabled. Set `TAILOR_PROVIDER` / `TAILOR_MODEL` only when the hosted deployment should use a different allowlisted model.
    ```
    supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
    supabase secrets set TAILOR_PROVIDER=anthropic   # optional; default is anthropic
@@ -184,7 +184,7 @@ The foundation is broader now, but these are still not production-complete:
 
 - Automated job-source ingestion or broad job-board scanning. Discovery is currently user-imported/manual.
 - Rich preference learning from accumulated liked/skipped/applied jobs. Current scoring is deterministic and early.
-- Parser-first PDF extraction. PDFs whose text layer cannot be confirmed are flagged for review today, while text-layer PDFs still use a temporary AI extraction path.
+- PDF extraction fallback review. Parser-first text extraction is the default; operators should keep the AI fallback disabled unless they need it for a verified parser incompatibility.
 - Deep grounded generation for packet items beyond the tailored resume and cover letter. Some packet content is still template-based and review-required.
 - Social/profile enrichment implementation. The PRD exists, but the import/consent/revocation flow is not built.
 - Self-service account/data deletion in the extension.

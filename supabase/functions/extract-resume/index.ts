@@ -1,12 +1,15 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
-import { analyzePdfAtsReadiness } from "./pdf-check.js";
+import { extractText, getDocumentProxy } from "unpdf";
+import { decodePdfBase64, analyzePdfAtsReadiness } from "./pdf-check.js";
+import { extractEmbeddedPdfText } from "./pdf-extract.js";
 
-// TODO: Replace AI extraction with parser-first text extraction for PDFs with a
-// real text layer. AI must never be used to paper over scanned/OCR-dependent
-// resumes, because those PDFs are poor ATS inputs.
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+// Disabled by default. This is only for parser failures on a PDF that appears
+// to expose a text layer; it must never turn scanned/image-only documents into
+// silent AI/OCR extraction.
+const ENABLE_AI_PDF_FALLBACK = Deno.env.get("ENABLE_AI_PDF_FALLBACK") === "true";
 
 // ~11MB decoded (base64 is ~4/3 the size of the raw bytes) — comfortably under
 // Anthropic's 32MB request limit, just a guard against absurd payloads.
@@ -37,9 +40,50 @@ export default {
       );
     }
 
+    const bytes = decodePdfBase64(pdf_base64);
+    // `analyzePdfAtsReadiness` already handles an invalid encoding above; this
+    // keeps the type narrowing explicit for the parser.
+    if (!bytes) {
+      return Response.json({ error: "The uploaded file is not valid PDF data." }, { status: 400 });
+    }
+
+    try {
+      const extraction = await extractEmbeddedPdfText({ getDocumentProxy, extractText }, bytes);
+      if (!extraction.rawText) {
+        return Response.json(
+          {
+            code: "pdf_text_not_found",
+            error: "No selectable text could be extracted from this PDF. Export a text-based PDF from your resume editor or paste verified resume text instead.",
+            ats_readiness: atsReadiness,
+          },
+          { status: 422 },
+        );
+      }
+      return Response.json({
+        raw_text: extraction.rawText,
+        ats_readiness: atsReadiness,
+        extraction_method: "parser",
+        page_count: extraction.pageCount,
+      });
+    } catch (parserError) {
+      // Fall through only when an operator has explicitly enabled the legacy
+      // fallback and the lightweight signal indicates a real text layer.
+      if (!ENABLE_AI_PDF_FALLBACK || !ANTHROPIC_API_KEY || !atsReadiness.has_text_layer) {
+        console.error("PDF parser failed", parserError);
+        return Response.json(
+          {
+            code: "pdf_parse_failed",
+            error: "We could not read selectable text from this PDF. Export a text-based PDF from your resume editor or paste verified resume text instead.",
+            ats_readiness: atsReadiness,
+          },
+          { status: 422 },
+        );
+      }
+    }
+
     if (!ANTHROPIC_API_KEY) {
       return Response.json(
-        { error: "PDF extraction isn't configured on this server (missing ANTHROPIC_API_KEY secret)." },
+        { error: "PDF extraction fallback isn't configured on this server (missing ANTHROPIC_API_KEY secret)." },
         { status: 503 },
       );
     }
@@ -83,7 +127,11 @@ export default {
       return Response.json({ error: "Could not extract any text from that PDF." }, { status: 422 });
     }
 
-    return Response.json({ raw_text: textBlock.text, ats_readiness: atsReadiness });
+    return Response.json({
+      raw_text: textBlock.text,
+      ats_readiness: atsReadiness,
+      extraction_method: "ai_fallback",
+    });
   }),
 };
 

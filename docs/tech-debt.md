@@ -2,7 +2,7 @@
 
 ## Move Model Selection Out Of End-User Settings
 
-Status: Resolved
+Status: Implementation complete — deployment validation pending
 Area: Settings, Edge Functions, hosted product defaults
 Created: 2026-07-13
 Resolved: 2026-07-13
@@ -40,7 +40,7 @@ The operator's server-side API keys pay for generation, and the product is respo
 
 ## Replace AI PDF Extraction With Parser-First Extraction
 
-Status: Open
+Status: Resolved
 Area: Resume upload, ATS readiness, Edge Functions
 Created: 2026-07-13
 
@@ -62,6 +62,6 @@ However, text-layer PDFs still use a temporary AI extraction fallback. That is o
 
 - [x] Flag PDFs with no obvious text layer before extraction without falsely rejecting compressed/object-stream PDFs.
 - [x] Warn on image-heavy PDFs that still expose a text layer.
-- [ ] Add parser-first extraction for embedded PDF text.
-- [ ] Keep the AI fallback behind an explicit server-side flag or remove it.
-- [ ] Add tests using representative text-layer, scanned, image-heavy, and malformed PDFs.
+- [x] Add parser-first extraction for embedded PDF text.
+- [x] Keep the AI fallback behind an explicit server-side flag.
+- [ ] Add integration tests using representative text-layer, scanned, image-heavy, and malformed PDF fixtures in the Edge runtime.
