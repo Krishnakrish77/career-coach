@@ -1696,6 +1696,13 @@ async function loadPreferences() {
     $('workAuthorization').value = profilePreferences.work_authorization || '';
     $('salaryMin').value = profilePreferences.salary_min ?? '';
     $('excludedCompanies').value = (profilePreferences.excluded_companies || []).join(', ');
+    const applicationProfile = profilePreferences.application_profile || {};
+    $('applicationFirstName').value = applicationProfile.first_name || '';
+    $('applicationLastName').value = applicationProfile.last_name || '';
+    $('applicationEmail').value = applicationProfile.email || '';
+    $('applicationPhone').value = applicationProfile.phone || '';
+    $('applicationLinkedin').value = applicationProfile.linkedin || '';
+    $('applicationPortfolio').value = applicationProfile.portfolio || '';
   } catch (err) {
     setStatus('preferencesStatus', `Error: ${err.message}`, 'error');
   }
@@ -1717,6 +1724,14 @@ $('savePreferences').addEventListener('click', async () => {
       work_authorization: $('workAuthorization').value.trim() || null,
       salary_min: $('salaryMin').value ? Number($('salaryMin').value) : null,
       excluded_companies: csvValues($('excludedCompanies').value),
+      application_profile: {
+        first_name: $('applicationFirstName').value.trim(),
+        last_name: $('applicationLastName').value.trim(),
+        email: $('applicationEmail').value.trim(),
+        phone: $('applicationPhone').value.trim(),
+        linkedin: $('applicationLinkedin').value.trim(),
+        portfolio: $('applicationPortfolio').value.trim(),
+      },
     });
     setStatus('preferencesStatus', 'Saved.', 'success');
     await renderDiscoveryCriteria();

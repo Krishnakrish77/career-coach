@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Career Coach",
   "version": "0.1.0",
-  "description": "Capture job postings, tailor your resume/cover letter, and track applications.",
+  "description": "Capture jobs, tailor application materials, fill saved contact details, and track applications.",
   "action": {
     "default_popup": "extension/popup.html",
     "default_icon": {

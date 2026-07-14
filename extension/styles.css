@@ -466,6 +466,13 @@ button.subtle {
   gap: var(--space-2);
 }
 
+.form-preview-list {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .popup-empty {
   min-height: 74px;
   padding: var(--space-3);

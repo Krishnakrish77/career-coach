@@ -226,6 +226,13 @@ test('profile preferences are merged into the private profile row', async () => 
   assert.deepEqual(result.target_titles, ['Engineer']);
 });
 
+test('profile preferences include the saved application profile', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ application_profile: { email: 'me@example.com' } }] })]);
+  const result = await getProfilePreferences('token-1', fetchImpl);
+  assert.ok(calls[0].url.includes('application_profile'));
+  assert.equal(result.application_profile.email, 'me@example.com');
+});
+
 test('onboarding state is merged into the private profile row', async () => {
   const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ onboarding_state: { version: 1, dismissed: true } }] })]);
   const state = { version: 1, dismissed: true };

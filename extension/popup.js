@@ -1,11 +1,12 @@
 import { signIn, getValidSession, requestPasswordReset } from '../src/supabase-auth.js';
 import { getStorage, setStorage } from '../src/storage.js';
-import { listJobs, insertJob } from '../src/supabase-db.js';
+import { listJobs, insertJob, getProfilePreferences } from '../src/supabase-db.js';
 import { detectApplicationFields } from '../src/form-utils.js';
 
 const $ = (id) => document.getElementById(id);
 let session = null;
 let formSuggestions = [];
+let applicationProfile = {};
 
 function setStatus(id, message, kind = '') {
   const el = $(id);
@@ -31,6 +32,41 @@ function popupEmptyState(text) {
   el.className = 'empty-state popup-empty';
   el.textContent = text;
   return el;
+}
+
+function profileValueForField(field) {
+  if (field.type === 'name') return [applicationProfile.first_name, applicationProfile.last_name].filter(Boolean).join(' ');
+  return applicationProfile[field.type] || '';
+}
+
+async function loadApplicationProfile() {
+  if (!session) {
+    applicationProfile = {};
+    return;
+  }
+  const profile = await getProfilePreferences(session.accessToken);
+  applicationProfile = profile?.application_profile || {};
+}
+
+function renderFormPreview(fields) {
+  const output = $('formPreview');
+  output.replaceChildren();
+  const ready = fields.filter((field) => profileValueForField(field));
+  const summary = document.createElement('div');
+  summary.textContent = ready.length
+    ? `${ready.length} saved detail${ready.length === 1 ? '' : 's'} ready to fill. Review the fields below, then choose Fill saved application details.`
+    : 'No matching saved application details. Add them in Dashboard → Settings → Application details.';
+  output.appendChild(summary);
+  const list = document.createElement('ul');
+  list.className = 'form-preview-list';
+  for (const field of fields) {
+    const item = document.createElement('li');
+    const label = field.label || field.placeholder || field.name || field.type;
+    item.textContent = `${label}: ${profileValueForField(field) ? 'ready to fill' : 'not filled'}`;
+    list.appendChild(item);
+  }
+  output.appendChild(list);
+  $('fillForm').disabled = !ready.length;
 }
 
 function openDashboard(jobId) {
@@ -83,7 +119,14 @@ async function loadAccount() {
   session = await getValidSession(stored);
   if (session !== stored) await setStorage({ session });
   renderAccount();
-  if (session) renderRecentJobs();
+  if (session) {
+    try {
+      await loadApplicationProfile();
+    } catch {
+      applicationProfile = {};
+    }
+    renderRecentJobs();
+  }
 }
 
 async function handleAuth(action, statusVerb) {
@@ -106,6 +149,7 @@ async function handleAuth(action, statusVerb) {
     $('authPassword').value = '';
     setStatus('accountStatus', '');
     renderAccount();
+    await loadApplicationProfile();
     renderRecentJobs();
   } catch (err) {
     setStatus('accountStatus', `Error: ${err.message}`, 'error');
@@ -132,6 +176,8 @@ $('forgotPassword').addEventListener('click', async () => {
 $('signOut').addEventListener('click', async () => {
   await setStorage({ session: null });
   session = null;
+  applicationProfile = {};
+  formSuggestions = [];
   setStatus('accountStatus', '');
   setStatus('captureStatus', '');
   renderAccount();
@@ -241,24 +287,25 @@ $('previewForm').addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id || !/^https?:\/\//i.test(tab.url || '')) throw new Error('Open an application webpage first.');
     const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => [...document.querySelectorAll('input, textarea')].filter((el) => !el.disabled && el.type !== 'hidden').map((el) => ({ name: el.name, id: el.id, label: document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.innerText || '', placeholder: el.placeholder, tag: el.tagName.toLowerCase() })) });
-    const fields = detectApplicationFields(result || []); formSuggestions = fields; $('fillForm').disabled = !fields.length; output.textContent = fields.length ? `Preview: ${fields.map((field) => `${field.type} (${field.confidence})`).join(', ')}. Filling remains optional and never submits.` : 'No common application fields found.';
+    const fields = detectApplicationFields(result || []);
+    formSuggestions = fields;
+    if (!fields.length) {
+      $('fillForm').disabled = true;
+      output.textContent = 'No supported contact fields found. Career Coach does not fill files, checkboxes, custom questions, or submit buttons.';
+      return;
+    }
+    if (!Object.keys(applicationProfile).length) await loadApplicationProfile();
+    renderFormPreview(fields);
   } catch (err) { output.textContent = `Could not inspect this page: ${err.message}`; }
 });
 
 $('fillForm').addEventListener('click', async () => {
-  if (!formSuggestions.length || !confirm('Fill only the reviewed safe text fields? This never uploads files or submits.')) return;
-  // Keyed by groupKey, not bare type — two fields of the same type (e.g.
-  // "First Name" and "Last Name", or two different essay questions) are
-  // prompted and filled separately rather than both getting one shared value.
-  const values = {};
-  for (const key of [...new Set(formSuggestions.map((field) => field.groupKey))]) {
-    const sample = formSuggestions.find((field) => field.groupKey === key);
-    const value = prompt(`Value for ${sample.type}${sample.label ? ` — "${sample.label}"` : ''} (leave blank to skip):`);
-    if (value) values[key] = value;
-  }
+  const suggestions = formSuggestions.filter((field) => profileValueForField(field));
+  if (!suggestions.length || !confirm(`Fill ${suggestions.length} reviewed saved field${suggestions.length === 1 ? '' : 's'}? This never uploads files, fills custom questions, or submits.`)) return;
+  const values = Object.fromEntries(suggestions.map((field) => [field.groupKey, profileValueForField(field)]));
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const [{ result: changed }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, args: [formSuggestions, values], func: (suggestions, data) => { let count = 0; for (const field of suggestions) { const value = data[field.groupKey]; if (!value) continue; const el = field.id ? document.getElementById(field.id) : document.querySelector(`[name="${CSS.escape(field.name || '')}"]`); if (!el || el.type === 'file' || el.matches('button,[type=submit],[type=checkbox],[type=radio]')) continue; el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); count += 1; } return count; } });
+    const [{ result: changed }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, args: [suggestions, values], func: (fields, data) => { let count = 0; for (const field of fields) { const value = data[field.groupKey]; if (!value) continue; const el = field.id ? document.getElementById(field.id) : document.querySelector(`[name="${CSS.escape(field.name || '')}"]`); if (!el || el.type === 'file' || el.matches('button,[type=submit],[type=checkbox],[type=radio],[type=password]')) continue; el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); count += 1; } return count; } });
     $('formPreview').textContent = changed ? `Filled ${changed} reviewed field${changed === 1 ? '' : 's'}. Review every value before continuing.` : 'No field values were entered.';
   } catch (err) { $('formPreview').textContent = `Could not fill fields: ${err.message}`; }
 });

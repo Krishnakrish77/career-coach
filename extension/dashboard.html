@@ -187,6 +187,14 @@
         <label>Excluded companies <span class="small">(comma-separated)</span>
           <input id="excludedCompanies" placeholder="Company names">
         </label>
+        <h3>Application details</h3>
+        <p class="small">Used only when you choose to fill a supported application form from the extension. Career Coach never submits forms for you.</p>
+        <label>First name <input id="applicationFirstName" autocomplete="given-name"></label>
+        <label>Last name <input id="applicationLastName" autocomplete="family-name"></label>
+        <label>Email <input id="applicationEmail" type="email" autocomplete="email"></label>
+        <label>Phone <input id="applicationPhone" type="tel" autocomplete="tel"></label>
+        <label>LinkedIn URL <input id="applicationLinkedin" type="url" placeholder="https://linkedin.com/in/you"></label>
+        <label>Portfolio URL <input id="applicationPortfolio" type="url" placeholder="https://your-site.com"></label>
         <div class="form-actions">
           <button id="savePreferences" class="primary" type="button">Save Preferences</button>
           <div id="preferencesStatus" class="status-line" aria-live="polite"></div>
