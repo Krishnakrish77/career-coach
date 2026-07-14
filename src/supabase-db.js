@@ -224,6 +224,31 @@ export async function deleteCareerEvidence(accessToken, evidenceId, fetchImpl = 
   return restRequest(`career_evidence?id=eq.${evidenceId}`, accessToken, { method: 'DELETE' }, fetchImpl);
 }
 
+export async function getCompanyResearchBrief(accessToken, jobId, fetchImpl = fetch) {
+  const rows = await restRequest(
+    `company_research_briefs?job_id=eq.${jobId}&select=*&limit=1`,
+    accessToken,
+    {},
+    fetchImpl,
+  );
+  return rows[0] || null;
+}
+
+export async function saveCompanyResearchBrief(accessToken, { jobId, sourceUrl, sourceNotes, brief }, fetchImpl = fetch) {
+  const [saved] = await restRequest('company_research_briefs?on_conflict=user_id,job_id', accessToken, {
+    method: 'POST',
+    body: {
+      job_id: jobId,
+      source_url: sourceUrl || null,
+      source_notes: sourceNotes || '',
+      brief: brief || {},
+      updated_at: new Date().toISOString(),
+    },
+    extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
+  }, fetchImpl);
+  return saved;
+}
+
 export async function saveOpportunityScorecard(accessToken, jobId, scorecard, fetchImpl = fetch) {
   const byKey = Object.fromEntries(scorecard.factors.map((factor) => [factor.key, factor]));
   const [match] = await restRequest(

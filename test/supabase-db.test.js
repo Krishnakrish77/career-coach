@@ -16,6 +16,8 @@ import {
   listCareerEvidence,
   saveCareerEvidence,
   deleteCareerEvidence,
+  getCompanyResearchBrief,
+  saveCompanyResearchBrief,
   saveOpportunityScorecard,
   addJobFeedback,
   listDiscoveryRecommendations,
@@ -52,6 +54,26 @@ function fetchSequence(responses) {
   };
   return { fetchImpl, calls };
 }
+
+test('company research brief is scoped to a job and upserts editable source context', async () => {
+  const { fetchImpl, calls } = fetchSequence([
+    fakeResponse({ json: [{ id: 'brief-1', job_id: 'job-1' }] }),
+    fakeResponse({ json: [{ id: 'brief-1', job_id: 'job-1', source_url: 'https://acme.example/about' }] }),
+  ]);
+  const existing = await getCompanyResearchBrief('token-1', 'job-1', fetchImpl);
+  assert.equal(existing.id, 'brief-1');
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/company_research_briefs?job_id=eq.job-1&select=*&limit=1`);
+
+  const saved = await saveCompanyResearchBrief('token-1', {
+    jobId: 'job-1', sourceUrl: 'https://acme.example/about', sourceNotes: 'Official note', brief: { outreach: { recruiter_message: 'Hello' } },
+  }, fetchImpl);
+  assert.equal(saved.id, 'brief-1');
+  assert.equal(calls[1].url, `${SUPABASE_URL}/rest/v1/company_research_briefs?on_conflict=user_id,job_id`);
+  const body = JSON.parse(calls[1].opts.body);
+  assert.equal(body.job_id, 'job-1');
+  assert.equal(body.source_url, 'https://acme.example/about');
+  assert.equal(body.brief.outreach.recruiter_message, 'Hello');
+});
 
 test('listJobs requests a light column set, capped, newest first', async () => {
   const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: '1' }] })]);
