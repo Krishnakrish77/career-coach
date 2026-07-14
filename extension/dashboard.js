@@ -11,6 +11,7 @@ import {
   getLatestResume,
   getProfilePreferences,
   saveProfilePreferences,
+  saveOnboardingState,
   saveOpportunityScorecard,
   addJobFeedback,
   listDiscoveryRecommendations,
@@ -47,6 +48,7 @@ import { buildLikelyQuestions, extractStorySeeds, matchStoriesToQuestion, review
 import { buildCoachingPlan, weekStart } from '../src/coaching-utils.js';
 import { createDocx } from '../src/docx-utils.js';
 import { atsStatusLabel, buildAtsSimulation } from '../src/ats-utils.js';
+import { buildOnboardingSteps, nextIncompleteOnboardingStep, ONBOARDING_VERSION } from '../src/onboarding-utils.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 const $ = (id) => document.getElementById(id);
@@ -62,6 +64,8 @@ let interviewStories = [];
 let coachGoals = null;
 let selectedPracticeQuestion = '';
 let editingStoryId = null;
+let onboardingSteps = [];
+let onboardingTourActive = false;
 
 function setStatusElement(el, message, kind = '') {
   el.textContent = message;
@@ -336,6 +340,117 @@ document.querySelectorAll('.tab').forEach((tab) => {
     tabs[next].click();
   });
 });
+
+function activateDashboardTab(name) {
+  document.querySelector(`[data-tab="${name}"]`)?.click();
+}
+
+function clearTourTarget() {
+  document.querySelectorAll('.tour-target').forEach((element) => element.classList.remove('tour-target'));
+}
+
+function openOnboardingStep(step) {
+  if (!step) return;
+  activateDashboardTab(step.tab);
+  clearTourTarget();
+  const target = $(step.target);
+  if (target) {
+    target.classList.add('tour-target');
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.focus?.({ preventScroll: true });
+  }
+  $('onboardingTourCopy').textContent = `Next: ${step.label}. ${step.detail}`;
+}
+
+function renderOnboardingSteps() {
+  const list = $('onboardingSteps');
+  list.replaceChildren();
+  for (const step of onboardingSteps) {
+    const row = document.createElement('div');
+    row.className = 'onboarding-step';
+    row.dataset.complete = String(step.complete);
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = step.label;
+    const detail = document.createElement('span');
+    detail.textContent = step.complete ? 'Complete' : step.detail;
+    copy.append(title, detail);
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = step.complete ? 'subtle' : 'primary';
+    action.textContent = step.complete ? 'Review' : 'Start';
+    action.addEventListener('click', () => openOnboardingStep(step));
+    row.append(copy, action);
+    list.appendChild(row);
+  }
+}
+
+async function updateOnboardingState(fields) {
+  const { version: _previousVersion, ...existingState } = profilePreferences?.onboarding_state || {};
+  const onboarding_state = { ...existingState, ...fields, version: ONBOARDING_VERSION };
+  await saveOnboardingState(session.accessToken, onboarding_state);
+  profilePreferences = { ...(profilePreferences || {}), onboarding_state };
+}
+
+async function refreshOnboarding({ advanceTour = false, recommendations: knownRecommendations } = {}) {
+  const panel = $('onboardingPanel');
+  // Dismissal is persisted on the cached profile row. Do not spend four more
+  // requests after every user action when this user has opted out.
+  if (profilePreferences?.onboarding_state?.dismissed) {
+    panel.hidden = true;
+    return;
+  }
+  try {
+    const [preferences, resume, recommendations, jobs] = await Promise.all([
+      getProfilePreferences(session.accessToken), getLatestResume(session.accessToken),
+      Array.isArray(knownRecommendations) ? Promise.resolve(knownRecommendations) : listDiscoveryRecommendations(session.accessToken),
+      listJobs(session.accessToken),
+    ]);
+    profilePreferences = { ...(profilePreferences || {}), ...(preferences || {}) };
+    onboardingSteps = buildOnboardingSteps({ preferences: profilePreferences, resume, recommendations, jobs });
+    const allComplete = onboardingSteps.every((step) => step.complete);
+    const dismissed = Boolean(profilePreferences.onboarding_state?.dismissed);
+    const forceVisible = Boolean(profilePreferences.onboarding_state?.force_visible);
+    panel.hidden = dismissed || (allComplete && !forceVisible);
+    if (panel.hidden) return;
+    renderOnboardingSteps();
+    const next = nextIncompleteOnboardingStep(onboardingSteps) || onboardingSteps[0];
+    if (onboardingTourActive || advanceTour) {
+      onboardingTourActive = true;
+      openOnboardingStep(next);
+    } else {
+      $('onboardingTourCopy').textContent = allComplete ? 'All steps are complete. Review any area or use Guide me for a refresher.' : 'Complete these steps in any order, or choose Guide me for contextual help.';
+    }
+  } catch (err) {
+    panel.hidden = true;
+  }
+}
+
+$('startOnboardingTour').addEventListener('click', () => {
+  onboardingTourActive = true;
+  openOnboardingStep(nextIncompleteOnboardingStep(onboardingSteps) || onboardingSteps[0]);
+});
+
+$('dismissOnboarding').addEventListener('click', async () => {
+  try {
+    await updateOnboardingState({ dismissed: true, force_visible: false });
+    $('onboardingPanel').hidden = true;
+  } catch (err) {
+    $('onboardingTourCopy').textContent = `Could not dismiss checklist: ${err.message}`;
+  }
+});
+
+$('restartOnboarding').addEventListener('click', async () => {
+  try {
+    onboardingTourActive = false;
+    await updateOnboardingState({ dismissed: false, force_visible: true });
+    await refreshOnboarding();
+  } catch (err) {
+    $('onboardingTourCopy').textContent = `Could not restart checklist: ${err.message}`;
+  }
+});
+
+$('restartOnboardingFromSettings').addEventListener('click', () => $('restartOnboarding').click());
 
 // ---- Jobs ----
 // Every field below can originate from an arbitrary webpage (job.title/company,
@@ -1175,7 +1290,10 @@ async function renderDiscovery() {
     const strong = active.filter((item) => item.recommendation_label === 'strong_match').length;
     $('discoveryDigest').textContent = active.length ? `${active.length} role${active.length === 1 ? '' : 's'} waiting for review${strong ? `, including ${strong} strong match${strong === 1 ? '' : 'es'}` : ''}. Verify availability on the original posting.` : 'No new recommendations this week.';
     list.replaceChildren();
-    if (!recommendations.length) return list.appendChild(emptyState('No discoveries yet. Choose Find Jobs to search your saved preferences, or expand Import a job manually.'));
+    if (!recommendations.length) {
+      list.appendChild(emptyState('No discoveries yet. Choose Find Jobs to search your saved preferences, or expand Import a job manually.'));
+      return recommendations;
+    }
     for (const recommendation of recommendations) {
       const job = recommendation.discovered_jobs;
       const card = document.createElement('article');
@@ -1248,7 +1366,8 @@ async function renderDiscovery() {
           await task();
           setStatusElement(actionStatus, successMessage, 'success');
           await briefly();
-          await renderDiscovery();
+          const recommendations = await renderDiscovery();
+          await refreshOnboarding({ advanceTour: true, recommendations });
         } catch (err) {
           setStatusElement(actionStatus, `Error: ${err.message}`, 'error');
           setCardBusy(false);
@@ -1286,7 +1405,8 @@ async function renderDiscovery() {
             showFindJobsNotice(`Restored roles from ${job.company || 'this company'}.`, 'success');
             await renderDiscovery();
           });
-          await renderDiscovery();
+          const recommendations = await renderDiscovery();
+          await refreshOnboarding({ advanceTour: true, recommendations });
         } catch (err) { setStatusElement(actionStatus, `Error: ${err.message}`, 'error'); setCardBusy(false); }
       });
       actionButtons.push(hide);
@@ -1311,8 +1431,10 @@ async function renderDiscovery() {
       card.append(title, meta, metrics, why, concernEl, reason, actions, actionStatus);
       list.appendChild(card);
     }
+    return recommendations;
   } catch (err) {
     list.replaceChildren(emptyState(`Could not load discovery: ${err.message}`));
+    return null;
   }
 }
 $('showDiscoveryDigest').addEventListener('click', renderDiscovery);
@@ -1330,7 +1452,8 @@ $('findJobs').addEventListener('click', async () => {
     const failed = (result.source_summaries || []).filter((source) => source.status === 'failed').map((source) => source.source);
     const message = `Found ${result.recommendation_count} recommendation${result.recommendation_count === 1 ? '' : 's'}${failed.length ? `. Source failure: ${[...new Set(failed)].join(', ')}; results may be incomplete` : ''}${skipped.length ? `. Unavailable: ${[...new Set(skipped)].join(', ')}` : ''}${result.market_notice ? ` ${result.market_notice}` : ''}.`;
     setStatus('findJobsStatus', message, failed.length ? 'error' : 'success');
-    await renderDiscovery();
+    const recommendations = await renderDiscovery();
+    await refreshOnboarding({ advanceTour: true, recommendations });
   } catch (err) {
     setStatus('findJobsStatus', `Error: ${err.message}`, 'error');
   } finally {
@@ -1351,7 +1474,8 @@ $('importDiscovery').addEventListener('click', async () => {
     const recommendation = buildDiscoveryRecommendation({ job: { ...job, first_seen_at: discovered.first_seen_at }, preferences: profilePreferences, resumeText: resume?.raw_text || '' });
     await saveDiscoveryRecommendation(session.accessToken, discovered.id, recommendation);
     setStatus('discoveryStatus', 'Added to your discovery queue.', 'success');
-    await renderDiscovery();
+    const recommendations = await renderDiscovery();
+    await refreshOnboarding({ advanceTour: true, recommendations });
   } catch (err) { setStatus('discoveryStatus', `Error: ${err.message}`, 'error'); }
   finally { btn.disabled = false; }
 });
@@ -1545,6 +1669,7 @@ $('saveResume').addEventListener('click', async () => {
   try {
     await saveResume(session.accessToken, $('resumeText').value);
     setStatus('resumeStatus', 'Saved.', 'success');
+    await refreshOnboarding({ advanceTour: true });
     setTimeout(() => setStatus('resumeStatus', ''), 1500);
   } catch (err) {
     setStatus('resumeStatus', `Error: ${err.message}`, 'error');
@@ -1610,6 +1735,7 @@ $('savePreferences').addEventListener('click', async () => {
     });
     setStatus('preferencesStatus', 'Saved.', 'success');
     await renderDiscoveryCriteria();
+    await refreshOnboarding({ advanceTour: true });
   } catch (err) {
     setStatus('preferencesStatus', `Error: ${err.message}`, 'error');
   } finally {
@@ -1639,9 +1765,10 @@ async function init() {
   await renderJobDetail();
   renderDiscovery();
   loadResume();
-  loadPreferences();
+  await loadPreferences();
   await loadInterview();
   await renderCoach();
+  await refreshOnboarding();
 }
 
 init();

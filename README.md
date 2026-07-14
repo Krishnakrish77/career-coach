@@ -2,202 +2,92 @@
   <img src="icons/logo.png" alt="Career Coach" width="420">
 </p>
 
-Career Coach is a Chrome extension that helps you run a job search: capture postings as you browse, triage fit and quality, generate tailored application materials, track follow-up, prepare for interviews, and plan the week — backed by Supabase (Postgres + Auth + Edge Functions), not a server you have to run yourself.
+# Career Coach
 
-## What it does today
+Career Coach is a Chrome extension for managing a job search in one place. Save roles while browsing, find new openings, assess fit, tailor application materials, and keep follow-ups and interview preparation organized.
 
-- **Capture** — one click in the popup saves the current tab's job posting text, dedupes by normalized URL, and flags capture quality
-- **Tailor** — generates a tailored resume + cover letter per job via the server-controlled hosted model
-- **ATS simulation + opportunity triage** — job detail shows a deterministic ATS-style simulation with parse readiness, hard-gate checks, keyword/search evidence, and broader fit/quality triage
-- **Resume upload** — paste text, or upload a PDF; scanned/image-only PDFs are flagged because they are poor ATS inputs
-- **Application packets** — create review-required packets with resume, cover letter, recruiter note, LinkedIn note, short answer, copy/text/DOCX/PDF export, and submission tracking
-- **Discovery queue** — search Adzuna and USAJOBS on demand (or manually import public jobs), score recommendations against preferences, and like/save/skip/hide them before they enter the tracker
-- **Interview prep** — maintain a STAR story bank, draft story seeds from your resume, generate likely questions, match stories, save practice feedback, and track prep checklists
-- **Weekly plan** — set capacity/targets, generate a focused plan, manage reminders, and save a weekly retrospective
-- **Track** — per-job application status (`saved` -> `applied` -> `interviewing` -> `offer`/`rejected`), notes, and next follow-up dates
-- **Multi-device** — signed-in accounts, data lives in Supabase, not just one browser's local storage
+## What you can do
 
-See [Still incomplete](#still-incomplete-honest-roadmap) for the important gaps that remain before a broader user release.
+- Save a job posting from the current browser tab.
+- Find jobs from supported public sources, or add a public role manually.
+- Set your target roles, locations, salary, and remote preference to improve recommendations.
+- Store a resume, check its ATS readiness, and generate a tailored resume and cover letter for a saved role.
+- Track each application from saved through offer or rejection, with notes and follow-up dates.
+- Prepare interviews with a STAR story bank, practice prompts, and checklists.
+- Plan the week around applications, follow-ups, and interview preparation.
 
-For the product roadmap, market research, and phase-by-phase PRDs, see [docs/prds](docs/prds/README.md). For known product/engineering follow-up work, see [docs/tech-debt.md](docs/tech-debt.md).
+## Install the extension
 
-## Architecture
+1. Download and unzip a [Career Coach release](../../releases), or clone this repository.
+2. In Chrome, open `chrome://extensions`.
+3. Turn on **Developer mode**.
+4. Choose **Load unpacked** and select the unzipped project folder (the folder containing `manifest.json`).
+5. Pin Career Coach from Chrome’s Extensions menu for quick access.
 
-```
-Extension (Chrome, MV3)
-├─ extension/popup.html + popup.js       — sign in/up, capture the current tab, last 3 captures, link to dashboard
-├─ extension/dashboard.html + dashboard.js — full-page workspace: Jobs, Discovery, Resume, Interview Prep, Weekly Plan, Settings
-├─ extension/styles.css                  — shared design tokens/components used by both surfaces
-└─ src/
-   ├─ storage.js                         — chrome.storage.local wrapper for the auth session
-   ├─ supabase-auth.js                   — email/password auth against Supabase's GoTrue REST API
-   ├─ ats-utils.js                       — deterministic ATS-style parse, gate, keyword, and searchability simulation
-   └─ supabase-db.js                     — PostgREST calls (jobs/resumes/applications) + calls the `tailor`/`extract-resume`/`find-jobs` Edge Functions
+> A Chrome Web Store listing is not available yet, so Chrome’s “Load unpacked” flow is required.
 
-Supabase
-├─ Postgres — resumes, profiles, jobs, applications, job_matches, packets, discovery, interviews, coaching (RLS-scoped per user)
-├─ Auth — email/password; the extension holds the resulting JWT
-├─ Edge Function `tailor` — runs the LLM call server-side with the operator's own API key
-│  and server-controlled provider/model config, so no LLM key or raw model choice ever lives
-│  in the browser. Enforces a model allowlist, a per-job debounce,
-│  a per-user hourly cap before spending on a call, and also computes the tailoring match score
-│  (stored in `job_matches`) as part of the same call.
-├─ Edge Function `extract-resume` — extracts embedded/selectable text with a parser,
-   flags low-confidence PDFs for review, and keeps the legacy AI fallback disabled
-   unless an operator explicitly enables it.
-└─ Edge Function `find-jobs` — calls allowlisted public-job API connectors with
-   server-side credentials, then stores a private, scored discovery queue.
-```
+## First-time setup
 
-Why a backend at all, for a browser extension: RLS is what makes per-user data isolation real (not just "the UI happens to filter"), and moving the LLM call server-side means the operator's API key — not each user's own — pays for tailoring, which is what makes signup viable for people who don't have their own Anthropic/OpenAI account.
+1. Open the Career Coach popup and sign in.
+2. If you use the hosted instance, ask its administrator for an invitation first. Open the invitation email, set a password, then return to the popup to sign in.
+3. Select **Open dashboard**.
+4. Complete the short checklist at the top of the dashboard:
+   - Add target job titles and preferred locations in **Settings**.
+   - Paste your resume or upload a text-based PDF in **Resume**.
+   - Choose **Find Jobs** in **Discovery**, or save a role from a browser tab.
+   - Save a promising role to the tracker.
 
-## Project layout
+The checklist is optional and can be restarted from **Settings** at any time.
 
-```
-manifest.json                 MV3 manifest — permissions, icons, popup entry point
-extension/                    Browser extension UI entrypoints and shared CSS
-  popup.html / popup.js       Popup UI (thin: auth + capture only)
-  dashboard.html / dashboard.js Full-page dashboard (opened in its own tab)
-  styles.css                  Shared design tokens + components
-src/                          Shared extension modules
-  storage.js                  chrome.storage.local wrapper
-  supabase-auth.js            Auth: signUp/signIn/refreshSession/getValidSession
-  ats-utils.js                ATS-style simulator: parse readiness, hard gates, keyword evidence, search terms
-  supabase-db.js              Data: listJobs/getJob/insertJob/updateJob/updateApplicationStatus/
-                               updateApplicationNotes/deleteJob/saveResume/getLatestResume/
-                               listJobArtifacts/tailorJob/extractResumeFromPdf
-test/*.test.js                Node built-in test runner (node --test), no framework/deps
-icons/                        icon.svg (source) + rasterized PNGs + logo.svg/png
-supabase/migrations/*.sql     Schema, in order — see below
-supabase/functions/tailor/    Edge Function: the only place an LLM key is used
-supabase/config.toml          Local Supabase project config (synced to the live project via `supabase config push`)
+## Everyday workflow
+
+1. **Capture:** Open a public job posting and choose **Save current tab** in the extension popup.
+2. **Discover:** In the dashboard’s **Discovery** tab, choose **Find Jobs** for roles matching your saved preferences. It currently supports United States and India searches; a remote preference searches both markets.
+3. **Decide:** Review the recommendation, source, freshness, fit, and quality signals. Like, skip, hide a company, or save the role to your tracker.
+4. **Apply:** In **Jobs**, review the posting and ATS simulation, then tailor your resume and cover letter. Review every generated draft before using it.
+5. **Follow through:** Update the application status, add notes and a follow-up date, then use **Interview Prep** and **Weekly Plan** to stay organized.
+
+## Troubleshooting
+
+- **The extension is not visible:** Return to `chrome://extensions`, confirm Career Coach is enabled, then pin it from Chrome’s Extensions menu.
+- **Sign-in link or password reset does not work:** Use the newest email from the configured Career Coach instance. Hosted accounts require an invitation.
+- **Find Jobs shows no roles:** Check that target titles and a supported location or remote preference are saved in **Settings**. Results also depend on the public sources being available.
+- **A PDF resume cannot be read:** Use a text-based PDF or paste the resume text. Scanned/image-only PDFs may need OCR before they can be used well.
+- **A saved role is incomplete:** Open the role in **Jobs** and add the missing title, company, or description before tailoring.
+
+## Run your own instance
+
+This repository includes the extension and its Supabase backend. You need Node.js 18+, the Supabase CLI, a Supabase project, and credentials for any services you enable.
+
+```sh
+supabase login
+supabase link --project-ref <your-project-ref>
+supabase db push --password '<your-db-password>'
+supabase secrets set ANTHROPIC_API_KEY=... \
+  ADZUNA_APP_ID=... ADZUNA_APP_KEY=... \
+  USAJOBS_API_KEY=... USAJOBS_USER_AGENT='Career Coach support@example.com'
+supabase functions deploy tailor --use-api
+supabase functions deploy extract-resume --use-api
+supabase functions deploy find-jobs --use-api
 ```
 
-## Prerequisites
+Then update these project-specific values before loading the extension:
 
-- [Node.js](https://nodejs.org) 18+ (for running tests — the extension itself ships no build step)
-- Chrome (or any Chromium-based browser that supports MV3 extensions)
-- [Supabase CLI](https://supabase.com/docs/guides/cli) (`brew install supabase/tap/supabase` on macOS)
-- A Supabase project and an API key for the server-selected tailoring provider. `ANTHROPIC_API_KEY` is only needed for the optional PDF extraction fallback.
+- `src/supabase-auth.js`: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `AUTH_LANDING_URL`
+- `manifest.json`: the Supabase URL in `host_permissions`
+- `supabase/config.toml`: the same auth landing URL in the auth redirect settings
 
-## Setup
+`ANTHROPIC_API_KEY` enables tailoring. The Adzuna and USAJOBS credentials enable their respective Find Jobs sources; omit either source’s credentials to leave that source unavailable. Configure any additional tailoring provider only if you deliberately change the provider settings.
 
-1. **Clone and install.** No build step; tests use Node's built-in runner.
-   ```
-   npm test
-   ```
+## Contributing
 
-2. **Link the Supabase CLI to your project.**
-   ```
-   supabase login
-   supabase link --project-ref <your-project-ref>
-   ```
-
-3. **Push the schema.** Applies the migrations in `supabase/migrations/` (resumes/profiles/jobs/applications/job_matches/interview_stories tables, RLS policies, constraints, indexes).
-   ```
-   supabase db push --password '<your-db-password>'
-   ```
-
-4. **Set the operator's LLM key(s) as Edge Function secrets.** `ANTHROPIC_API_KEY` is the default tailoring-provider key and is only used for PDF extraction if the optional `ENABLE_AI_PDF_FALLBACK=true` fallback is enabled. Set `TAILOR_PROVIDER` / `TAILOR_MODEL` only when the hosted deployment should use a different allowlisted model.
-   ```
-   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
-   supabase secrets set TAILOR_PROVIDER=anthropic   # optional; default is anthropic
-   supabase secrets set TAILOR_MODEL=claude-haiku-4-5 # optional; must be allowlisted
-   supabase secrets set OPENAI_API_KEY=sk-...       # only if TAILOR_PROVIDER=openai
-   supabase secrets set GEMINI_API_KEY=...          # only if TAILOR_PROVIDER=gemini
-   ```
-
-   **Configure public job-source credentials for Find Jobs.** These stay only in the Edge Function. Adzuna is used for US and India searches; USAJOBS is used for US public-sector roles. A missing source credential is reported as skipped, so one available source can still return results.
-   ```
-   supabase secrets set ADZUNA_APP_ID=... ADZUNA_APP_KEY=...
-   supabase secrets set USAJOBS_API_KEY=... USAJOBS_USER_AGENT='Career Coach support@example.com'
-   ```
-
-5. **Deploy all Edge Functions.**
-   ```
-   supabase functions deploy tailor --use-api
-   supabase functions deploy extract-resume --use-api
-   supabase functions deploy find-jobs --use-api
-   ```
-   (`--use-api` bundles server-side without needing Docker running locally.)
-
-6. **Point the extension and auth redirects at your project.** These values are hardcoded today (this is a single-deployment personal project, not yet parameterized for forks):
-   - `src/supabase-auth.js` — `SUPABASE_URL` and `SUPABASE_ANON_KEY` (the **publishable** key — safe to embed client-side, RLS is the actual security boundary)
-   - `src/supabase-auth.js` — `AUTH_LANDING_URL`, the public URL for `docs/auth.html` after you publish the docs site
-   - `manifest.json` — `host_permissions` must list your project's `https://<ref>.supabase.co/*`
-   - `supabase/config.toml` — `[auth].site_url` and `additional_redirect_urls` must include the same `AUTH_LANDING_URL` so invite and password-reset links can redirect there
-
-7. **Load the extension.** `chrome://extensions` → enable Developer mode → "Load unpacked" → select this directory.
-
-## Using it
-
-Signup is invite-only on the hosted project (public self-signup is disabled — see [Security notes](#security-notes)). To invite someone: Supabase Dashboard → Authentication → Users → **Invite user** → enter their email. They'll get an email with a link to `docs/auth.html` to set their password; from there:
-
-1. Open the popup, log in.
-2. Browse to a job posting, click **Save current tab**.
-3. Click **Open dashboard →**. In the **Resume** tab, paste your resume once.
-4. In the **Jobs** tab, review the ATS simulation, assess the opportunity, tailor the resume + cover letter, and create an application packet.
-5. Track status, notes, follow-up dates, interview prep, and weekly plan actions from the dashboard.
-
-Forgot your password? Use the "Forgot password?" link in the popup — same `docs/auth.html` page handles both invite and password-reset links.
-
-## Development
-
-```
-npm test          # runs every test/*.test.js via Node's built-in test runner — no Jest/Mocha/etc.
+```sh
+npm test
 ```
 
-Tests mock `fetch` via dependency injection (every network function takes an optional `fetchImpl` parameter) rather than stubbing globals — see `test/supabase-auth.test.js` / `test/supabase-db.test.js` for the pattern.
+Tests use Node’s built-in test runner. For schema changes, create a migration with `supabase migration new <name>` and apply it with `supabase db push`. Deploy a changed Edge Function with `supabase functions deploy <function-name> --use-api`.
 
-To iterate on an Edge Function before merging, deploy the one you changed manually:
-```
-supabase functions deploy tailor --use-api          # after any change to supabase/functions/tailor/index.ts
-supabase functions deploy extract-resume --use-api  # after any change to supabase/functions/extract-resume/index.ts
-supabase functions deploy find-jobs --use-api       # after any change to supabase/functions/find-jobs/index.ts
-```
-
-To add a schema change: `supabase migration new <name>`, edit the generated SQL, then `supabase db push --password '...'`.
-
-**One-time setup after cloning** — run the test suite locally on every push, so most failures never reach GitHub Actions:
-```
-git config core.hooksPath .githooks
-```
-(`core.hooksPath` is a local git setting, not something git syncs on clone — every clone needs to run this once.)
-
-## CI / releases
-
-- **CI** (`.github/workflows/ci.yml`) runs on PRs and pushes to `main` only — not every branch push, and not on docs/icon-only changes (`paths-ignore`). A new push to the same PR cancels the previous run in progress rather than letting a stale one finish. This is a backstop: the pre-push hook above should already catch most failures before they ever reach Actions.
-- **Supabase deploy** (`.github/workflows/supabase-deploy.yml`) runs when `supabase/migrations/**`, `supabase/functions/**`, or `supabase/config.toml` changes. PRs preview the migration diff against the linked project with a dry run. After merge to `main`, the protected `production` job runs the test suite, applies pending migrations, then deploys `tailor`, `extract-resume`, and `find-jobs`. Configure repository secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, and either a `SUPABASE_PROJECT_REF` repo variable or secret before relying on it.
-- **Pages** (`.github/workflows/pages.yml`) deploys `docs/*.html` and `docs/assets/**` to GitHub Pages whenever those change on `main` (or via manual `workflow_dispatch`). It stages only those files before upload, so `docs/prds/**` and `docs/tech-debt.md` — repo-internal planning docs, not site content — never get published and don't trigger a redeploy when edited.
-- **Releases** (`.github/workflows/release.yml`) only fire on a `v*` tag push — never on a normal commit. To cut one:
-  ```
-  # bump "version" in manifest.json and package.json to match, then:
-  git add manifest.json package.json
-  git commit -m "Release vX.Y.Z"
-  git tag vX.Y.Z
-  git push && git push --tags
-  ```
-  This zips `manifest.json` + `extension/` + `icons/` + `src/` (excluding `test/`, `supabase/`, and this README) and attaches it to a new GitHub release — ready to upload to the Chrome Web Store as-is.
-
-## Security notes
-
-- **API keys never reach the browser.** The `tailor` Edge Function holds the operator's LLM keys as secrets; the client only sends the selected job ID.
-- **RLS on every table**, scoped to `auth.uid()` — the actual isolation boundary between users, not just UI filtering.
-- **Abuse guards on `tailor`**: a server-side model allowlist, a 15-second per-job debounce, and a 20-calls/hour per-user cap, backed by a single `applications.last_tailored_at` column rather than a separate rate-limiting service.
-- **No `innerHTML` with untrusted data.** Job titles/descriptions (from arbitrary web pages) and LLM output are rendered via `textContent`/`.value`, never string-interpolated into HTML. Job URLs are validated to `http(s)` before ever becoming a real link.
-- **Invite-only signup.** Public self-registration is disabled (`enable_signup = false`) — this repo is public and `SUPABASE_URL`/the publishable key are visible in the source (by design, see below), so open signup would let anyone spend the operator's AI budget via `tailor`. New users are added via Supabase Dashboard → Authentication → Users → Invite.
-- **`SUPABASE_URL`/`SUPABASE_ANON_KEY` are meant to be public.** They identify the project and are required in any client-side call — RLS, not key secrecy, is the actual boundary. The `service_role` key and every LLM API key are the real secrets, and those only ever exist as Edge Function secrets, never in this repo or the browser.
-
-## Still incomplete (honest roadmap)
-
-The foundation is broader now, but these are still not production-complete:
-
-- Automated scheduled ingestion or broad job-board crawling. Discovery is user-clicked, API-first, and limited to allowlisted public sources.
-- Rich preference learning from accumulated liked/skipped/applied jobs. Current scoring is deterministic and early.
-- PDF extraction fallback review. Parser-first text extraction is the default; operators should keep the AI fallback disabled unless they need it for a verified parser incompatibility.
-- Deep grounded generation for packet items beyond the tailored resume and cover letter. Some packet content is still template-based and review-required.
-- Social/profile enrichment implementation. The PRD exists, but the import/consent/revocation flow is not built.
-- Self-service account/data deletion in the extension.
+Product planning documents are in [docs/prds](docs/prds/README.md), and known follow-up work is in [docs/tech-debt.md](docs/tech-debt.md).
 
 ## License
 
