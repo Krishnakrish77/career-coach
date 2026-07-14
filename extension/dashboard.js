@@ -12,6 +12,8 @@ import {
   listCareerEvidence,
   saveCareerEvidence,
   deleteCareerEvidence,
+  getCompanyResearchBrief,
+  saveCompanyResearchBrief,
   getProfilePreferences,
   saveProfilePreferences,
   saveOnboardingState,
@@ -54,6 +56,7 @@ import { buildCoachingPlan, weekStart } from '../src/coaching-utils.js';
 import { createDocx } from '../src/docx-utils.js';
 import { atsStatusLabel, buildAtsSimulation } from '../src/ats-utils.js';
 import { buildApplicationDecisionBrief } from '../src/decision-brief-utils.js';
+import { buildCompanyResearchBrief } from '../src/company-research-utils.js';
 import { buildOnboardingSteps, nextIncompleteOnboardingStep, ONBOARDING_VERSION } from '../src/onboarding-utils.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
@@ -648,6 +651,14 @@ async function renderJobDetail(editing = false) {
     // Packet data is additive; a temporary failure must not hide the job.
   }
 
+  let researchBrief = null;
+  try {
+    researchBrief = await getCompanyResearchBrief(session.accessToken, job.id);
+  } catch {
+    // Research is additive; a missing or temporarily unavailable brief must
+    // not prevent the user from working with their saved job.
+  }
+
   let latestResume = null;
   try {
     latestResume = await getLatestResume(session.accessToken);
@@ -867,6 +878,98 @@ async function renderJobDetail(editing = false) {
   });
   const storedCard = jobMatch?.score_explanation?.factors ? jobMatch.score_explanation : null;
   card.appendChild(renderApplicationDecisionBrief(buildApplicationDecisionBrief({ job, scorecard: storedCard, atsSimulation })));
+
+  const researchSection = document.createElement('section');
+  researchSection.className = 'detail-section stack';
+  const researchHeader = document.createElement('div');
+  researchHeader.className = 'detail-section-header';
+  const researchTitle = document.createElement('h3');
+  researchTitle.textContent = 'Company Research & Outreach';
+  const researchBtn = document.createElement('button');
+  researchBtn.type = 'button';
+  researchBtn.className = 'primary';
+  researchBtn.textContent = researchBrief ? 'Refresh Brief' : 'Build Research Brief';
+  researchHeader.append(researchTitle, researchBtn);
+  const researchIntro = document.createElement('div');
+  researchIntro.className = 'small';
+  researchIntro.textContent = 'Add an official company source and your notes. This creates private, editable drafts only—it does not research contacts or send messages.';
+  const sourceUrl = document.createElement('input');
+  sourceUrl.type = 'url';
+  sourceUrl.placeholder = 'https://company.com/about (optional official source)';
+  sourceUrl.value = researchBrief?.source_url || '';
+  const sourceNotes = document.createElement('textarea');
+  sourceNotes.placeholder = 'Paste the useful company context you want to consider (optional).';
+  sourceNotes.value = researchBrief?.source_notes || '';
+  const researchStatus = document.createElement('div');
+  researchStatus.className = 'status-line';
+  researchStatus.setAttribute('aria-live', 'polite');
+  researchSection.append(researchHeader, researchIntro, labelWrap('Official source URL', sourceUrl), labelWrap('Source notes', sourceNotes), researchStatus);
+
+  const renderResearchOutput = (brief, savedSourceUrl) => {
+    if (!brief) return;
+    const output = document.createElement('div');
+    output.className = 'stack compact';
+    const source = safeHttpUrl(savedSourceUrl);
+    if (source) {
+      const sourceLine = document.createElement('a');
+      sourceLine.href = source; sourceLine.target = '_blank'; sourceLine.rel = 'noopener'; sourceLine.className = 'small'; sourceLine.textContent = 'Open saved source';
+      output.appendChild(sourceLine);
+    }
+    if (brief.role_themes?.length) {
+      const themes = document.createElement('div'); themes.className = 'small'; themes.textContent = `Role themes: ${brief.role_themes.join(', ')}.`; output.appendChild(themes);
+    }
+    const questions = document.createElement('div');
+    questions.className = 'small';
+    questions.textContent = `Questions to investigate: ${(brief.questions_to_investigate || []).join(' ') || 'Review the official source and role requirements.'}`;
+    output.appendChild(questions);
+    const drafts = brief.outreach || {};
+    const draftsToSave = [
+      ['Recruiter message', 'recruiter_message'],
+      ['LinkedIn note', 'linkedin_note'],
+      ['Follow-up email', 'follow_up_email'],
+    ];
+    const fields = {};
+    for (const [label, key] of draftsToSave) {
+      const field = document.createElement('textarea');
+      field.value = drafts[key] || '';
+      fields[key] = field;
+      const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'subtle'; copy.textContent = `Copy ${label}`;
+      copy.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(field.value); setStatusElement(researchStatus, `${label} copied. Review it before sending.`, 'success'); }
+        catch (err) { setStatusElement(researchStatus, `Could not copy: ${err.message}`, 'error'); }
+      });
+      output.append(labelWrap(`${label} (draft)`, field), copy);
+    }
+    const saveDrafts = document.createElement('button'); saveDrafts.type = 'button'; saveDrafts.className = 'subtle'; saveDrafts.textContent = 'Save Outreach Drafts';
+    saveDrafts.addEventListener('click', async () => {
+      saveDrafts.disabled = true;
+      try {
+        await saveCompanyResearchBrief(session.accessToken, {
+          jobId: job.id, sourceUrl: sourceUrl.value.trim(), sourceNotes: sourceNotes.value.trim(),
+          brief: { ...brief, outreach: Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.value])) },
+        });
+        setStatusElement(researchStatus, 'Outreach drafts saved. They remain private and unsent.', 'success');
+      } catch (err) { setStatusElement(researchStatus, `Could not save drafts: ${err.message}`, 'error'); }
+      finally { saveDrafts.disabled = false; }
+    });
+    output.appendChild(saveDrafts);
+    researchSection.insertBefore(output, researchStatus);
+  };
+  renderResearchOutput(researchBrief?.brief, researchBrief?.source_url);
+  researchBtn.addEventListener('click', async () => {
+    researchBtn.disabled = true;
+    setStatusElement(researchStatus, 'Building a private research brief…');
+    try {
+      const confirmedEvidence = await listCareerEvidence(session.accessToken);
+      const brief = buildCompanyResearchBrief({ job, sourceNotes: sourceNotes.value, careerEvidence: confirmedEvidence });
+      await saveCompanyResearchBrief(session.accessToken, { jobId: job.id, sourceUrl: sourceUrl.value.trim(), sourceNotes: sourceNotes.value.trim(), brief });
+      await renderJobDetail(editing);
+    } catch (err) {
+      setStatusElement(researchStatus, `Could not build research brief: ${err.message}`, 'error');
+      researchBtn.disabled = false;
+    }
+  });
+  card.appendChild(researchSection);
 
   // PRD 2: scorecards stay explainable. A user explicitly triggers this
   // deterministic calculation, then it is persisted for queueing later.

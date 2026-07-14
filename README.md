@@ -44,7 +44,7 @@ The checklist is optional and can be restarted from **Settings** at any time.
 1. **Capture:** Open a public job posting and choose **Save current tab** in the extension popup.
 2. **Discover:** In the dashboard’s **Discovery** tab, choose **Find Jobs** for roles matching your saved preferences. It currently supports United States and India searches; a remote preference searches both markets.
 3. **Decide:** Review the recommendation, source, freshness, fit, and quality signals. In a saved role, the **Application Decision** brief brings together fit evidence, gaps, preferences, and posting health before you tailor or apply.
-4. **Apply:** In **Jobs**, use **Check Availability** before tailoring when a posting may be stale. Add confirmed career evidence and writing guidance in **Resume** if you want it considered in drafts. Review every generated draft before using it.
+4. **Apply:** In **Jobs**, use **Check Availability** before tailoring when a posting may be stale. Add confirmed career evidence and writing guidance in **Resume** if you want it considered in drafts. For a saved role, **Company Research & Outreach** turns an official source URL and your notes into editable, private outreach drafts—it does not find contacts or send messages. Review every generated draft before using it.
 5. **Follow through:** Update the application status, add notes and a follow-up date, then use **Interview Prep** and **Weekly Plan** to stay organized.
 
 ## Troubleshooting
