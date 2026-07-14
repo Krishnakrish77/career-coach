@@ -40,5 +40,7 @@ test('connector provenance and snippet warning are included in recommendation re
   assert.ok(recommendation.reasoning.reasons.some((reason) => reason.includes('Adzuna')));
   assert.ok(recommendation.reasoning.reasons.some((reason) => reason.includes('Search query')));
   assert.ok(recommendation.reasoning.reasons.some((reason) => reason.includes('snippet')));
-  assert.match(recommendation.reasoning.ats_simulation, /ATS keyword simulation/);
+  assert.match(recommendation.reasoning.ats_simulation, /ATS keyword overlap simulation/);
+  assert.match(recommendation.reasoning.ats_simulation, new RegExp(`${recommendation.resume_fit_score}/100`));
+  assert.equal(recommendation.reasoning.reasons.filter((reason) => /simulation|Resume overlap/.test(reason)).length, 1);
 });

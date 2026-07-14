@@ -86,13 +86,3 @@ export function normalizeUsaJobsJob(item = {}, { query = '' } = {}) {
     description_is_snippet: false,
   };
 }
-
-export function atsSimulationSummary(resumeText = '', jobText = '') {
-  const words = (value) => new Set((value.toLowerCase().match(/[a-z][a-z+#.-]{2,}/g) || []));
-  const resumeWords = words(resumeText);
-  const jobWords = words(jobText);
-  if (!resumeWords.size || !jobWords.size) return null;
-  const overlap = [...jobWords].filter((word) => resumeWords.has(word)).length;
-  const score = Math.min(100, Math.round((overlap / Math.min(jobWords.size, 40)) * 100));
-  return `ATS keyword simulation: ${score}/100 based on ${overlap} shared terms.`;
-}

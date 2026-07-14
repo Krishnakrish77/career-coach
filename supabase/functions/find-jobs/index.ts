@@ -2,33 +2,13 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { buildDiscoveryRecommendation } from "../../../src/discovery-utils.js";
 import { buildDiscoveryQueryPlan } from "../../../src/find-jobs-utils.js";
+import { hashContent, normalizeUrl } from "../../../src/job-utils.js";
 import { adzunaConnector, usajobsConnector } from "./connectors.ts";
 
 const MAX_LIMIT = 20;
 const RUN_COOLDOWN_SECONDS = 60;
 const MAX_RUNS_PER_HOUR = 10;
 const corsHeaders = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, x-client-info, apikey, content-type" };
-
-const TRACKING_QUERY_PARAMS = new Set(["fbclid", "gclid", "igshid", "mc_cid", "mc_eid", "msclkid", "ref", "ref_src", "referrer", "trk", "yclid"]);
-function normalizeUrl(url: string) {
-  // Deliberately matches src/job-utils.js, allowing connector results and
-  // manual imports to resolve to the same discovered_jobs row.
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
-    const path = parsed.pathname.replace(/\/+$/, "");
-    const params = [...parsed.searchParams.entries()]
-      .filter(([name]) => !name.toLowerCase().startsWith("utm_") && !TRACKING_QUERY_PARAMS.has(name.toLowerCase()))
-      .sort(([aName, aValue], [bName, bValue]) => aName.localeCompare(bName) || aValue.localeCompare(bValue));
-    const query = new URLSearchParams(params).toString();
-    return `${host}${path}${query ? `?${query}` : ""}`;
-  } catch { return url.trim().toLowerCase(); }
-}
-async function contentHash(text: string) {
-  const bytes = new TextEncoder().encode((text || "").trim());
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
@@ -100,7 +80,7 @@ export default {
         if (!normalizedUrl || seen.has(normalizedUrl)) continue;
         seen.add(normalizedUrl);
         const jdText = String(job.jd_text || "");
-        const hash = await contentHash(jdText);
+        const hash = await hashContent(jdText);
         let existing = null;
         if (jdText.trim().length >= 80) {
           const { data } = await ctx.supabase.from("discovered_jobs").select("*").eq("content_hash", hash).limit(1).maybeSingle();
