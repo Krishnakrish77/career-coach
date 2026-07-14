@@ -63,16 +63,18 @@
 
     <section id="discoveryView" class="view" role="tabpanel" aria-labelledby="discoveryTab">
       <div class="view-toolbar"><div class="toolbar-copy"><span class="eyebrow">Opportunity inbox</span><h2>Discovery</h2><div class="small">Search trusted public sources or import a role; recommendations stay separate until you save one.</div></div></div>
-      <div class="panel form-panel stack"><div class="row"><h3 class="grow">This week’s digest</h3><button id="findJobs" class="primary" type="button">Find Jobs</button><button id="showDiscoveryDigest" class="subtle" type="button">Refresh digest</button></div><div id="discoveryDigest" class="small"></div></div>
-      <div class="panel form-panel stack">
-        <h3>Import a job to review</h3>
+      <div class="panel form-panel stack"><div class="row discovery-controls"><div class="grow"><h3>Find roles</h3><div id="discoveryCriteria" class="small"></div></div><button id="findJobs" class="primary" type="button">Find Jobs</button><button id="editDiscoveryPreferences" class="subtle" type="button">Edit preferences</button><button id="showDiscoveryDigest" class="subtle" type="button">Refresh</button></div><div id="findJobsStatus" class="status-line" aria-live="polite"></div><div id="discoveryDigest" class="small"></div></div>
+      <details class="panel form-panel discovery-import">
+        <summary>Import a job manually</summary>
+        <div class="stack">
         <label>Job URL <input id="discoveryUrl" type="url" placeholder="https://company.example/jobs/123"></label>
         <label>Title <input id="discoveryTitle" placeholder="Product Manager"></label>
         <label>Company <input id="discoveryCompany" placeholder="Company"></label>
         <label>Location <input id="discoveryLocation" placeholder="Remote, Bengaluru, etc."></label>
         <label>Job description <textarea id="discoveryDescription" placeholder="Paste the job description"></textarea></label>
         <div class="form-actions"><button id="importDiscovery" class="primary" type="button">Add to Discovery</button><div id="discoveryStatus" class="status-line" aria-live="polite"></div></div>
-      </div>
+        </div>
+      </details>
       <div id="discoveryList" class="stack"></div>
     </section>
 

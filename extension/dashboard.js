@@ -1128,16 +1128,54 @@ async function excludeCompanyPreference(company) {
   profilePreferences = await saveProfilePreferences(session.accessToken, { ...profilePreferences, excluded_companies: [...current, company] });
 }
 
+async function renderDiscoveryCriteria() {
+  if (!profilePreferences) profilePreferences = (await getProfilePreferences(session.accessToken)) || {};
+  const titles = [...(profilePreferences.target_titles || []), ...(profilePreferences.title_aliases || [])];
+  const locations = profilePreferences.target_locations || [];
+  const remote = profilePreferences.remote_preference === 'remote' ? 'Remote' : '';
+  const criteria = [titles.slice(0, 3).join(', '), locations.join(', ') || remote || 'United States + India'].filter(Boolean);
+  $('discoveryCriteria').textContent = titles.length
+    ? `Searching for ${criteria.join(' · ')}.`
+    : 'Add a target title in Settings to search public sources.';
+  $('findJobs').disabled = !titles.length;
+  $('findJobs').title = titles.length ? '' : 'Add a target title in Settings first.';
+}
+
+function showFindJobsNotice(message, kind = '', undo) {
+  const status = $('findJobsStatus');
+  status.replaceChildren(document.createTextNode(message));
+  if (kind) status.dataset.kind = kind;
+  else delete status.dataset.kind;
+  if (undo) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'subtle inline-action';
+    button.textContent = 'Undo';
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        await undo();
+      } catch (err) {
+        showFindJobsNotice(`Could not restore this company: ${err.message}`, 'error');
+      }
+    }, { once: true });
+    status.appendChild(document.createTextNode(' '), button);
+  }
+}
+
+const briefly = () => new Promise((resolve) => setTimeout(resolve, 650));
+
 async function renderDiscovery() {
   const list = $('discoveryList');
   list.replaceChildren(emptyState('Loading discovery queue...'));
   try {
+    await renderDiscoveryCriteria();
     const recommendations = await listDiscoveryRecommendations(session.accessToken);
     const active = recommendations.filter((item) => ['new', 'seen'].includes(item.status));
     const strong = active.filter((item) => item.recommendation_label === 'strong_match').length;
     $('discoveryDigest').textContent = active.length ? `${active.length} role${active.length === 1 ? '' : 's'} waiting for review${strong ? `, including ${strong} strong match${strong === 1 ? '' : 'es'}` : ''}. Verify availability on the original posting.` : 'No new recommendations this week.';
     list.replaceChildren();
-    if (!recommendations.length) return list.appendChild(emptyState('No discoveries yet. Import a public job URL or paste a role above.'));
+    if (!recommendations.length) return list.appendChild(emptyState('No discoveries yet. Choose Find Jobs to search your saved preferences, or expand Import a job manually.'));
     for (const recommendation of recommendations) {
       const job = recommendation.discovered_jobs;
       const card = document.createElement('article');
@@ -1162,64 +1200,115 @@ async function renderDiscovery() {
       const freshness = recommendation.reasoning?.freshness_score === 100 ? 'Fresh' : recommendation.reasoning?.freshness_score === 70 ? 'Recent' : 'Older';
       meta.textContent = [job.company, job.location, discoveryLabel(recommendation.recommendation_label), sourceLabel, job.source_query ? `“${job.source_query}”` : '', freshness].filter(Boolean).join(' · ');
 
+      const metrics = document.createElement('div');
+      metrics.className = 'discovery-metrics';
+      const addMetric = (label, value) => {
+        const metric = document.createElement('span');
+        metric.className = 'discovery-metric';
+        metric.textContent = `${label} ${value == null ? '—' : `${Math.round(Number(value))}/100`}`;
+        metrics.appendChild(metric);
+      };
+      addMetric('Preference', recommendation.preference_fit_score);
+      addMetric('Resume', recommendation.resume_fit_score);
+      addMetric('Quality', recommendation.job_quality_score);
+
       const why = document.createElement('div');
       why.className = 'small';
-      why.textContent = `Why this job: ${(recommendation.reasoning?.reasons || []).join(' ')}`;
+      const reasons = (recommendation.reasoning?.reasons || []).filter((reason) => !/^(Source:|Search query:|ATS keyword)/.test(reason));
+      why.textContent = `Why this job: ${reasons.slice(0, 2).join(' ') || 'Review the original posting for details.'}`;
 
       const concern = recommendation.reasoning?.concerns?.[0];
       const concernEl = document.createElement('div');
       concernEl.className = 'small';
-      concernEl.textContent = concern ? `Review: ${concern}` : '';
+      concernEl.textContent = concern ? `Review: ${concern}` : recommendation.reasoning?.description_is_snippet ? 'Review: The source provided only a description snippet.' : '';
 
       const actions = document.createElement('div');
-      actions.className = 'row';
-      for (const [action, label, status] of [['like', 'Like', 'liked'], ['skip', 'Skip', 'skipped'], ['hide', 'Hide company', 'hidden']]) {
+      actions.className = 'row discovery-actions';
+      const actionStatus = document.createElement('div');
+      actionStatus.className = 'status-line card-action-status';
+      actionStatus.setAttribute('aria-live', 'polite');
+      const actionButtons = [];
+      const reason = document.createElement('input');
+      reason.type = 'text';
+      reason.className = 'discovery-reason';
+      reason.placeholder = 'Optional reason for this decision';
+      reason.setAttribute('aria-label', 'Optional reason for this decision');
+      reason.hidden = true;
+      const toggleReason = document.createElement('button');
+      toggleReason.type = 'button';
+      toggleReason.className = 'subtle';
+      toggleReason.textContent = 'Add reason';
+      toggleReason.addEventListener('click', () => { reason.hidden = !reason.hidden; toggleReason.textContent = reason.hidden ? 'Add reason' : 'Hide reason'; if (!reason.hidden) reason.focus(); });
+      actionButtons.push(toggleReason, reason);
+      const setCardBusy = (busy) => actionButtons.forEach((button) => { button.disabled = busy; });
+      const runAction = async (button, task, successMessage) => {
+        setCardBusy(true);
+        setStatusElement(actionStatus, 'Saving...');
+        try {
+          await task();
+          setStatusElement(actionStatus, successMessage, 'success');
+          await briefly();
+          await renderDiscovery();
+        } catch (err) {
+          setStatusElement(actionStatus, `Error: ${err.message}`, 'error');
+          setCardBusy(false);
+        }
+      };
+      for (const [action, label, status] of [['like', 'Like', 'liked'], ['skip', 'Skip', 'skipped']]) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'subtle';
         btn.textContent = label;
         btn.addEventListener('click', async () => {
-          const promptText = action === 'like' ? 'Why do you like this role? (optional)' : 'Why is this not a fit? (optional)';
-          const reason = window.prompt(promptText);
-          btn.disabled = true;
-          setStatus('discoveryStatus', 'Saving...');
-          try {
-            await addDiscoveryFeedback(session.accessToken, job.id, { action, reasons: reason ? [reason] : [] });
+          await runAction(btn, async () => {
+            await addDiscoveryFeedback(session.accessToken, job.id, { action, reasons: reason.value.trim() ? [reason.value.trim()] : [] });
             await updateDiscoveryStatus(session.accessToken, recommendation.id, status);
-            if (action === 'hide') await excludeCompanyPreference(job.company);
-            setStatus('discoveryStatus', '');
-            await renderDiscovery();
-          } catch (err) {
-            setStatus('discoveryStatus', `Error: ${err.message}`, 'error');
-            btn.disabled = false;
-          }
+          }, action === 'like' ? 'Liked. This will improve future recommendations.' : 'Skipped.');
         });
+        actionButtons.push(btn);
         actions.appendChild(btn);
       }
+
+      const hide = document.createElement('button');
+      hide.type = 'button'; hide.className = 'subtle'; hide.textContent = 'Hide company';
+      hide.addEventListener('click', async () => {
+        setCardBusy(true); setStatusElement(actionStatus, 'Hiding company...');
+        try {
+          await addDiscoveryFeedback(session.accessToken, job.id, { action: 'hide', reasons: reason.value.trim() ? [reason.value.trim()] : [] });
+          await updateDiscoveryStatus(session.accessToken, recommendation.id, 'hidden');
+          await excludeCompanyPreference(job.company);
+          setStatusElement(actionStatus, `Hidden roles from ${job.company || 'this company'}.`, 'success');
+          await briefly();
+          showFindJobsNotice(`Hidden roles from ${job.company || 'this company'}.`, 'success', async () => {
+            const current = (profilePreferences?.excluded_companies || []).filter((company) => company.toLowerCase() !== (job.company || '').toLowerCase());
+            profilePreferences = await saveProfilePreferences(session.accessToken, { ...profilePreferences, excluded_companies: current });
+            await updateDiscoveryStatus(session.accessToken, recommendation.id, 'new');
+            showFindJobsNotice(`Restored roles from ${job.company || 'this company'}.`, 'success');
+            await renderDiscovery();
+          });
+          await renderDiscovery();
+        } catch (err) { setStatusElement(actionStatus, `Error: ${err.message}`, 'error'); setCardBusy(false); }
+      });
+      actionButtons.push(hide);
+      actions.appendChild(hide, toggleReason);
 
       const save = document.createElement('button');
       save.type = 'button';
       save.className = 'primary';
       save.textContent = 'Save to Tracker';
       save.addEventListener('click', async () => {
-        save.disabled = true;
-        setStatus('discoveryStatus', 'Saving...');
-        try {
+        await runAction(save, async () => {
           await insertJob(session.accessToken, { url: job.source_url, title: job.title, company: job.company, jd_text: job.jd_text || '' });
-          await addDiscoveryFeedback(session.accessToken, job.id, { action: 'save' });
+          await addDiscoveryFeedback(session.accessToken, job.id, { action: 'save', reasons: reason.value.trim() ? [reason.value.trim()] : [] });
           await updateDiscoveryStatus(session.accessToken, recommendation.id, 'saved');
-          setStatus('discoveryStatus', '');
-          await renderDiscovery();
-        } catch (err) {
-          setStatus('discoveryStatus', `Error: ${err.message}`, 'error');
-          save.disabled = false;
-        }
+        }, 'Saved to your tracker.');
       });
 
+      actionButtons.push(save);
       actions.appendChild(save);
       const apply = document.createElement('button'); apply.type = 'button'; apply.className = 'primary'; apply.textContent = 'Track as Applied';
-      apply.addEventListener('click', async () => { if (!confirm('Mark this as applied in your tracker? This does not submit anything to the employer.')) return; apply.disabled = true; try { const tracked = await insertJob(session.accessToken, { url: job.source_url, title: job.title, company: job.company, jd_text: job.jd_text || '' }); await updateApplicationStatus(session.accessToken, tracked.id, 'applied'); await addDiscoveryFeedback(session.accessToken, job.id, { action: 'apply' }); await updateDiscoveryStatus(session.accessToken, recommendation.id, 'saved'); setStatus('discoveryStatus', 'Tracked as applied.', 'success'); await renderDiscovery(); } catch (err) { setStatus('discoveryStatus', `Error: ${err.message}`, 'error'); apply.disabled = false; } }); actions.appendChild(apply);
-      card.append(title, meta, why, concernEl, actions);
+      apply.addEventListener('click', async () => { await runAction(apply, async () => { const tracked = await insertJob(session.accessToken, { url: job.source_url, title: job.title, company: job.company, jd_text: job.jd_text || '' }); await updateApplicationStatus(session.accessToken, tracked.id, 'applied'); await addDiscoveryFeedback(session.accessToken, job.id, { action: 'apply', reasons: reason.value.trim() ? [reason.value.trim()] : [] }); await updateDiscoveryStatus(session.accessToken, recommendation.id, 'saved'); }, 'Tracked as applied.'); }); actionButtons.push(apply); actions.appendChild(apply);
+      card.append(title, meta, metrics, why, concernEl, reason, actions, actionStatus);
       list.appendChild(card);
     }
   } catch (err) {
@@ -1227,22 +1316,26 @@ async function renderDiscovery() {
   }
 }
 $('showDiscoveryDigest').addEventListener('click', renderDiscovery);
+$('editDiscoveryPreferences').addEventListener('click', () => document.querySelector('[data-tab="settings"]')?.click());
 
 $('findJobs').addEventListener('click', async () => {
   const btn = $('findJobs');
   btn.disabled = true;
-  setStatus('discoveryStatus', 'Searching sources...');
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Searching sources...';
+  setStatus('findJobsStatus', 'Searching Adzuna and USAJOBS...');
   try {
     const result = await findJobs(session.accessToken);
     const skipped = (result.source_summaries || []).filter((source) => source.status === 'skipped').map((source) => source.source);
     const failed = (result.source_summaries || []).filter((source) => source.status === 'failed').map((source) => source.source);
     const message = `Found ${result.recommendation_count} recommendation${result.recommendation_count === 1 ? '' : 's'}${failed.length ? `. Source failure: ${[...new Set(failed)].join(', ')}; results may be incomplete` : ''}${skipped.length ? `. Unavailable: ${[...new Set(skipped)].join(', ')}` : ''}${result.market_notice ? ` ${result.market_notice}` : ''}.`;
-    setStatus('discoveryStatus', message, failed.length ? 'error' : 'success');
+    setStatus('findJobsStatus', message, failed.length ? 'error' : 'success');
     await renderDiscovery();
   } catch (err) {
-    setStatus('discoveryStatus', `Error: ${err.message}`, 'error');
+    setStatus('findJobsStatus', `Error: ${err.message}`, 'error');
   } finally {
     btn.disabled = false;
+    btn.textContent = originalLabel;
   }
 });
 
@@ -1501,6 +1594,7 @@ $('savePreferences').addEventListener('click', async () => {
       excluded_companies: csvValues($('excludedCompanies').value),
     });
     setStatus('preferencesStatus', 'Saved.', 'success');
+    await renderDiscoveryCriteria();
   } catch (err) {
     setStatus('preferencesStatus', `Error: ${err.message}`, 'error');
   } finally {
