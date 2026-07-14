@@ -7,6 +7,20 @@ const ADZUNA_APP_ID = Deno.env.get("ADZUNA_APP_ID");
 const ADZUNA_APP_KEY = Deno.env.get("ADZUNA_APP_KEY");
 const USAJOBS_API_KEY = Deno.env.get("USAJOBS_API_KEY");
 const USAJOBS_USER_AGENT = Deno.env.get("USAJOBS_USER_AGENT");
+const CONNECTOR_TIMEOUT_MS = 8_000;
+
+async function fetchWithTimeout(input: string, init?: RequestInit) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CONNECTOR_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`Source request timed out after ${CONNECTOR_TIMEOUT_MS / 1000}s`);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function skipped(source: string, reason: string): ConnectorResult {
   return { jobs: [], summary: { source, status: "skipped", reason, discovered_count: 0 } };
@@ -20,7 +34,7 @@ export async function adzunaConnector(query: SourceQuery, limit: number): Promis
   const params = new URLSearchParams({ app_id: ADZUNA_APP_ID, app_key: ADZUNA_APP_KEY, results_per_page: String(Math.min(limit, 10)), what: query.query });
   if (query.location) params.set("where", query.location);
   if (query.salaryMin) params.set("salary_min", String(query.salaryMin));
-  const response = await fetch(`https://api.adzuna.com/v1/api/jobs/${country}/search/1?${params}`);
+  const response = await fetchWithTimeout(`https://api.adzuna.com/v1/api/jobs/${country}/search/1?${params}`);
   if (!response.ok) throw new Error(`Adzuna returned ${response.status}`);
   const body = await response.json();
   const jobs = (body.results || []).map((item: Record<string, unknown>) => normalizeAdzunaJob(item, { query: query.query })).filter((job: Record<string, unknown>) => job.source_url);
@@ -33,7 +47,7 @@ export async function usajobsConnector(query: SourceQuery, limit: number): Promi
   const params = new URLSearchParams({ Keyword: query.query, ResultsPerPage: String(Math.min(limit, 10)) });
   if (query.location && query.location !== "Remote") params.set("LocationName", query.location);
   if (query.salaryMin) params.set("MinSalary", String(query.salaryMin));
-  const response = await fetch(`https://data.usajobs.gov/api/Search?${params}`, { headers: { "Authorization-Key": USAJOBS_API_KEY, "User-Agent": USAJOBS_USER_AGENT, "Host": "data.usajobs.gov" } });
+  const response = await fetchWithTimeout(`https://data.usajobs.gov/api/Search?${params}`, { headers: { "Authorization-Key": USAJOBS_API_KEY, "User-Agent": USAJOBS_USER_AGENT, "Host": "data.usajobs.gov" } });
   if (!response.ok) throw new Error(`USAJOBS returned ${response.status}`);
   const body = await response.json();
   const items = body.SearchResult?.SearchResultItems || [];

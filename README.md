@@ -32,7 +32,7 @@ Extension (Chrome, MV3)
    ├─ storage.js                         — chrome.storage.local wrapper for the auth session
    ├─ supabase-auth.js                   — email/password auth against Supabase's GoTrue REST API
    ├─ ats-utils.js                       — deterministic ATS-style parse, gate, keyword, and searchability simulation
-   └─ supabase-db.js                     — PostgREST calls (jobs/resumes/applications) + calls the `tailor`/`extract-resume` Edge Functions
+   └─ supabase-db.js                     — PostgREST calls (jobs/resumes/applications) + calls the `tailor`/`extract-resume`/`find-jobs` Edge Functions
 
 Supabase
 ├─ Postgres — resumes, profiles, jobs, applications, job_matches, packets, discovery, interviews, coaching (RLS-scoped per user)
@@ -113,7 +113,7 @@ supabase/config.toml          Local Supabase project config (synced to the live 
    supabase secrets set USAJOBS_API_KEY=... USAJOBS_USER_AGENT='Career Coach support@example.com'
    ```
 
-5. **Deploy both Edge Functions.**
+5. **Deploy all Edge Functions.**
    ```
    supabase functions deploy tailor --use-api
    supabase functions deploy extract-resume --use-api
@@ -167,7 +167,7 @@ git config core.hooksPath .githooks
 ## CI / releases
 
 - **CI** (`.github/workflows/ci.yml`) runs on PRs and pushes to `main` only — not every branch push, and not on docs/icon-only changes (`paths-ignore`). A new push to the same PR cancels the previous run in progress rather than letting a stale one finish. This is a backstop: the pre-push hook above should already catch most failures before they ever reach Actions.
-- **Supabase deploy** (`.github/workflows/supabase-deploy.yml`) runs when `supabase/migrations/**`, `supabase/functions/**`, or `supabase/config.toml` changes. PRs preview the migration diff against the linked project with a dry run. After merge to `main`, the protected `production` job runs the test suite, applies pending migrations, then deploys `tailor` and `extract-resume` in that order. Configure repository secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, and either a `SUPABASE_PROJECT_REF` repo variable or secret before relying on it.
+- **Supabase deploy** (`.github/workflows/supabase-deploy.yml`) runs when `supabase/migrations/**`, `supabase/functions/**`, or `supabase/config.toml` changes. PRs preview the migration diff against the linked project with a dry run. After merge to `main`, the protected `production` job runs the test suite, applies pending migrations, then deploys `tailor`, `extract-resume`, and `find-jobs`. Configure repository secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, and either a `SUPABASE_PROJECT_REF` repo variable or secret before relying on it.
 - **Pages** (`.github/workflows/pages.yml`) deploys `docs/*.html` and `docs/assets/**` to GitHub Pages whenever those change on `main` (or via manual `workflow_dispatch`). It stages only those files before upload, so `docs/prds/**` and `docs/tech-debt.md` — repo-internal planning docs, not site content — never get published and don't trigger a redeploy when edited.
 - **Releases** (`.github/workflows/release.yml`) only fire on a `v*` tag push — never on a normal commit. To cut one:
   ```

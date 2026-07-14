@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDiscoveryQueries, normalizeAdzunaJob, normalizeUsaJobsJob } from '../src/find-jobs-utils.js';
+import { buildDiscoveryQueries, buildDiscoveryQueryPlan, normalizeAdzunaJob, normalizeUsaJobsJob } from '../src/find-jobs-utils.js';
 
 test('buildDiscoveryQueries caps title searches and covers US plus India', () => {
   const queries = buildDiscoveryQueries({ target_titles: ['Product Manager'], title_aliases: ['PM'], target_locations: ['New York', 'Bengaluru'], remote_preference: 'remote', salary_min: 100000 });
@@ -8,6 +8,18 @@ test('buildDiscoveryQueries caps title searches and covers US plus India', () =>
   assert.equal(queries[0].location, 'New York');
   assert.equal(queries[2].location, 'Bengaluru');
   assert.equal(queries[0].query, 'Product Manager remote');
+});
+
+test('explicit unsupported locations do not silently search supported markets', () => {
+  const plan = buildDiscoveryQueryPlan({ target_titles: ['Product Manager'], target_locations: ['London', 'Berlin'] });
+  assert.deepEqual(plan.queries, []);
+  assert.deepEqual(plan.unsupportedLocations, ['London', 'Berlin']);
+});
+
+test('mixed locations search only their supported market and retain a visible notice', () => {
+  const plan = buildDiscoveryQueryPlan({ target_titles: ['Product Manager'], target_locations: ['New York', 'London'] });
+  assert.deepEqual(plan.queries.map((query) => query.country), ['us']);
+  assert.deepEqual(plan.unsupportedLocations, ['London']);
 });
 
 test('normalizes Adzuna descriptions as snippet-only source evidence', () => {

@@ -1235,7 +1235,7 @@ $('findJobs').addEventListener('click', async () => {
   try {
     const result = await findJobs(session.accessToken);
     const skipped = (result.source_summaries || []).filter((source) => source.status === 'skipped').map((source) => source.source);
-    setStatus('discoveryStatus', `Found ${result.recommendation_count} recommendation${result.recommendation_count === 1 ? '' : 's'}${skipped.length ? `. Unavailable: ${[...new Set(skipped)].join(', ')}` : ''}.`, 'success');
+    setStatus('discoveryStatus', `Found ${result.recommendation_count} recommendation${result.recommendation_count === 1 ? '' : 's'}${skipped.length ? `. Unavailable: ${[...new Set(skipped)].join(', ')}` : ''}${result.market_notice ? ` ${result.market_notice}` : ''}.`, 'success');
     await renderDiscovery();
   } catch (err) {
     setStatus('discoveryStatus', `Error: ${err.message}`, 'error');
