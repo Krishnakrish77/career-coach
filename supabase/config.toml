@@ -441,3 +441,11 @@ entrypoint = "./functions/extract-resume/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/extract-resume/*.html" ]
+
+[functions.check-job-health]
+enabled = true
+# This function checks only a posting the caller already owns. Keep gateway JWT
+# verification enabled so anonymous callers cannot spend its network budget.
+verify_jwt = true
+import_map = "./functions/check-job-health/deno.json"
+entrypoint = "./functions/check-job-health/index.ts"

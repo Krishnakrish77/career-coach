@@ -322,6 +322,21 @@ button.subtle {
   color: var(--danger);
 }
 
+.pill[data-health="active"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.pill[data-health="likely_expired"] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.pill[data-health="needs_review"] {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
 .pill[data-ats-status="ready"] {
   background: var(--success-soft);
   color: var(--success);
