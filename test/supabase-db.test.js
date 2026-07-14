@@ -13,6 +13,9 @@ import {
   getProfilePreferences,
   saveProfilePreferences,
   saveOnboardingState,
+  listCareerEvidence,
+  saveCareerEvidence,
+  deleteCareerEvidence,
   saveOpportunityScorecard,
   addJobFeedback,
   listDiscoveryRecommendations,
@@ -252,6 +255,22 @@ test('onboarding state is merged into the private profile row', async () => {
   assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/profiles?on_conflict=user_id`);
   assert.deepEqual(JSON.parse(calls[0].opts.body).onboarding_state, state);
   assert.deepEqual(result.onboarding_state, state);
+});
+
+test('career evidence is listed and saved through the private evidence ledger', async () => {
+  const { fetchImpl, calls } = fetchSequence([
+    fakeResponse({ json: [{ id: 'e1', title: 'Launch' }] }),
+    fakeResponse({ json: [{ id: 'e2', title: 'Launch' }] }),
+    fakeResponse({ noContent: true }),
+  ]);
+  const listed = await listCareerEvidence('token-1', fetchImpl);
+  await saveCareerEvidence('token-1', { title: 'Launch', evidence_text: 'Improved activation.', review_status: 'user_confirmed' }, fetchImpl);
+  await deleteCareerEvidence('token-1', 'e2', fetchImpl);
+  assert.equal(listed[0].id, 'e1');
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/career_evidence?select=*&order=updated_at.desc&limit=100`);
+  assert.equal(calls[1].opts.method, 'POST');
+  assert.equal(JSON.parse(calls[1].opts.body).review_status, 'user_confirmed');
+  assert.equal(calls[2].opts.method, 'DELETE');
 });
 
 test('interview stories save through the private story-bank endpoint', async () => {

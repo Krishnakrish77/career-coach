@@ -169,7 +169,7 @@ export async function getLatestResume(accessToken, fetchImpl = fetch) {
 // profile already or not.
 export async function getProfilePreferences(accessToken, fetchImpl = fetch) {
   const rows = await restRequest(
-    'profiles?select=target_titles,title_aliases,target_locations,remote_preference,salary_min,industries,seniority_targets,company_sizes,work_authorization,excluded_companies,onboarding_state,application_profile&limit=1',
+    'profiles?select=target_titles,title_aliases,target_locations,remote_preference,salary_min,industries,seniority_targets,company_sizes,work_authorization,excluded_companies,onboarding_state,application_profile,writing_guidance&limit=1',
     accessToken,
     {},
     fetchImpl,
@@ -203,6 +203,25 @@ export async function saveOnboardingState(accessToken, onboardingState, fetchImp
     fetchImpl,
   );
   return profile;
+}
+
+export async function listCareerEvidence(accessToken, fetchImpl = fetch) {
+  return restRequest('career_evidence?select=*&order=updated_at.desc&limit=100', accessToken, {}, fetchImpl);
+}
+
+export async function saveCareerEvidence(accessToken, evidence, fetchImpl = fetch) {
+  const endpoint = evidence.id ? `career_evidence?id=eq.${evidence.id}` : 'career_evidence';
+  const method = evidence.id ? 'PATCH' : 'POST';
+  const body = { ...evidence, updated_at: new Date().toISOString() };
+  delete body.id;
+  const [saved] = await restRequest(endpoint, accessToken, {
+    method, body, extraHeaders: { prefer: 'return=representation' },
+  }, fetchImpl);
+  return saved;
+}
+
+export async function deleteCareerEvidence(accessToken, evidenceId, fetchImpl = fetch) {
+  return restRequest(`career_evidence?id=eq.${evidenceId}`, accessToken, { method: 'DELETE' }, fetchImpl);
 }
 
 export async function saveOpportunityScorecard(accessToken, jobId, scorecard, fetchImpl = fetch) {

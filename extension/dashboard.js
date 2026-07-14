@@ -9,6 +9,9 @@ import {
   deleteJob,
   saveResume,
   getLatestResume,
+  listCareerEvidence,
+  saveCareerEvidence,
+  deleteCareerEvidence,
   getProfilePreferences,
   saveProfilePreferences,
   saveOnboardingState,
@@ -69,6 +72,8 @@ let selectedPracticeQuestion = '';
 let editingStoryId = null;
 let onboardingSteps = [];
 let onboardingTourActive = false;
+let careerEvidence = [];
+let editingCareerEvidenceId = null;
 
 function setStatusElement(el, message, kind = '') {
   el.textContent = message;
@@ -1036,10 +1041,11 @@ async function renderJobDetail(editing = false) {
       const existing = await getApplicationPacket(session.accessToken, job.id);
       if (existing) return renderJobDetail(editing);
       const resume = await getLatestResume(session.accessToken);
+      const confirmedEvidence = await listCareerEvidence(session.accessToken);
       await createApplicationPacket(session.accessToken, {
         jobId: job.id,
         resumeId: resume?.id,
-        items: createPacketDrafts({ job, application }),
+        items: createPacketDrafts({ job, application, careerEvidence: confirmedEvidence }),
       });
       await renderJobDetail(editing);
     } catch (err) {
@@ -1111,6 +1117,12 @@ async function renderJobDetail(editing = false) {
     output.readOnly = true;
     output.value = `TAILORED RESUME\n\n${application.tailored_resume}\n\nCOVER LETTER\n\n${application.cover_letter || ''}`;
 
+    const evidenceContext = document.createElement('div');
+    evidenceContext.className = 'small';
+    evidenceContext.textContent = application.tailoring_evidence?.length
+      ? `Verified evidence supplied as draft context: ${application.tailoring_evidence.join(', ')}. Review the draft to confirm relevance and wording.`
+      : 'No saved career evidence was supplied as context for this draft.';
+
     copyBtn.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(output.value);
@@ -1120,7 +1132,7 @@ async function renderJobDetail(editing = false) {
       }
     });
 
-    outputSection.append(outputHeader, output);
+    outputSection.append(outputHeader, evidenceContext, output);
     card.appendChild(outputSection);
   }
 
@@ -1713,6 +1725,57 @@ async function loadResume() {
   }
 }
 
+function clearCareerEvidenceForm() {
+  editingCareerEvidenceId = null;
+  $('careerEvidenceName').value = '';
+  $('careerEvidenceText').value = '';
+  $('careerEvidenceSkills').value = '';
+  $('careerEvidenceConfirmed').checked = false;
+  $('saveCareerEvidence').textContent = 'Save Evidence';
+  $('cancelCareerEvidenceEdit').hidden = true;
+}
+
+async function renderCareerEvidence() {
+  const list = $('careerEvidenceList');
+  list.replaceChildren();
+  try {
+    careerEvidence = await listCareerEvidence(session.accessToken);
+    if (!careerEvidence.length) {
+      list.appendChild(emptyState('No confirmed accomplishments yet. Add only evidence you can verify.'));
+      return;
+    }
+    for (const item of careerEvidence) {
+      const row = document.createElement('article');
+      row.className = 'card stack compact';
+      const title = document.createElement('strong'); title.textContent = item.title;
+      const copy = document.createElement('div'); copy.className = 'small'; copy.textContent = item.evidence_text;
+      const meta = document.createElement('div'); meta.className = 'small'; meta.textContent = [item.review_status === 'user_confirmed' ? 'Confirmed for drafts' : 'Needs review', ...(item.skills || [])].join(' · ');
+      const actions = document.createElement('div'); actions.className = 'row';
+      const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'subtle'; edit.textContent = 'Edit';
+      edit.addEventListener('click', () => {
+        editingCareerEvidenceId = item.id;
+        $('careerEvidenceName').value = item.title || '';
+        $('careerEvidenceText').value = item.evidence_text || '';
+        $('careerEvidenceSkills').value = (item.skills || []).join(', ');
+        $('careerEvidenceConfirmed').checked = item.review_status === 'user_confirmed';
+        $('saveCareerEvidence').textContent = 'Update Evidence';
+        $('cancelCareerEvidenceEdit').hidden = false;
+        $('careerEvidenceName').focus();
+      });
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger'; remove.textContent = 'Delete';
+      remove.addEventListener('click', async () => {
+        if (!confirm(`Delete “${item.title}”?`)) return;
+        remove.disabled = true;
+        try { await deleteCareerEvidence(session.accessToken, item.id); await renderCareerEvidence(); }
+        catch (err) { setStatus('careerEvidenceStatus', `Could not delete: ${err.message}`, 'error'); remove.disabled = false; }
+      });
+      actions.append(edit, remove); row.append(title, copy, meta, actions); list.appendChild(row);
+    }
+  } catch (err) {
+    setStatus('careerEvidenceStatus', `Error: ${err.message}`, 'error');
+  }
+}
+
 function readFileAsBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1774,6 +1837,34 @@ $('saveResume').addEventListener('click', async () => {
   }
 });
 
+$('saveCareerEvidence').addEventListener('click', async () => {
+  const title = $('careerEvidenceName').value.trim();
+  const evidenceText = $('careerEvidenceText').value.trim();
+  if (!title || !evidenceText) return setStatus('careerEvidenceStatus', 'Add a title and verified evidence first.', 'error');
+  if (!$('careerEvidenceConfirmed').checked) return setStatus('careerEvidenceStatus', 'Confirm accuracy before allowing this evidence in drafts.', 'error');
+  const btn = $('saveCareerEvidence'); btn.disabled = true; setStatus('careerEvidenceStatus', 'Saving...');
+  try {
+    await saveCareerEvidence(session.accessToken, { id: editingCareerEvidenceId, title, evidence_text: evidenceText, skills: csvValues($('careerEvidenceSkills').value), review_status: 'user_confirmed' });
+    clearCareerEvidenceForm(); await renderCareerEvidence(); setStatus('careerEvidenceStatus', 'Confirmed evidence saved.', 'success');
+  } catch (err) { setStatus('careerEvidenceStatus', `Error: ${err.message}`, 'error'); }
+  finally { btn.disabled = false; }
+});
+
+$('cancelCareerEvidenceEdit').addEventListener('click', clearCareerEvidenceForm);
+
+$('saveWritingGuidance').addEventListener('click', async () => {
+  const btn = $('saveWritingGuidance'); btn.disabled = true; setStatus('writingGuidanceStatus', 'Saving...');
+  try {
+    if (!profilePreferences) profilePreferences = (await getProfilePreferences(session.accessToken)) || {};
+    profilePreferences = await saveProfilePreferences(session.accessToken, {
+      ...profilePreferences,
+      writing_guidance: { tone: $('writingTone').value.trim(), focus_areas: $('writingFocusAreas').value.trim(), phrases_to_avoid: $('writingPhrasesToAvoid').value.trim() },
+    });
+    setStatus('writingGuidanceStatus', 'Writing guidance saved.', 'success');
+  } catch (err) { setStatus('writingGuidanceStatus', `Error: ${err.message}`, 'error'); }
+  finally { btn.disabled = false; }
+});
+
 // ---- Settings ----
 function csvValues(value) {
   return value.split(',').map((item) => item.trim()).filter(Boolean);
@@ -1793,6 +1884,10 @@ async function loadPreferences() {
     $('salaryMin').value = profilePreferences.salary_min ?? '';
     $('excludedCompanies').value = (profilePreferences.excluded_companies || []).join(', ');
     const applicationProfile = profilePreferences.application_profile || {};
+    const writingGuidance = profilePreferences.writing_guidance || {};
+    $('writingTone').value = writingGuidance.tone || '';
+    $('writingFocusAreas').value = writingGuidance.focus_areas || '';
+    $('writingPhrasesToAvoid').value = writingGuidance.phrases_to_avoid || '';
     $('applicationFirstName').value = applicationProfile.first_name || '';
     $('applicationLastName').value = applicationProfile.last_name || '';
     $('applicationEmail').value = applicationProfile.email || '';
@@ -1862,6 +1957,7 @@ async function init() {
   renderDiscovery();
   loadResume();
   await loadPreferences();
+  await renderCareerEvidence();
   await loadInterview();
   await renderCoach();
   await refreshOnboarding();
