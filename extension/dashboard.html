@@ -104,6 +104,16 @@
           <div id="resumeStatus" class="status-line" aria-live="polite"></div>
         </div>
       </div>
+      <section class="panel form-panel stack" aria-labelledby="careerEvidenceTitle">
+        <div><h3 id="careerEvidenceTitle">Career evidence</h3><div class="small">Save accomplishments you have personally verified. Only confirmed entries can inform tailoring or packet drafts.</div></div>
+        <label>Evidence title <input id="careerEvidenceName" placeholder="Improved activation for a new product launch"></label>
+        <label>What happened and your impact <textarea id="careerEvidenceText" placeholder="State the context, your action, and a verified result or metric."></textarea></label>
+        <label>Skills <input id="careerEvidenceSkills" placeholder="product strategy, analytics"></label>
+        <label class="filter-checkbox"><input id="careerEvidenceConfirmed" type="checkbox"> I confirm this is accurate and I am comfortable using it in drafts.</label>
+        <div class="form-actions"><button id="saveCareerEvidence" class="primary" type="button">Save Evidence</button><button id="cancelCareerEvidenceEdit" class="subtle" type="button" hidden>Cancel</button><div id="careerEvidenceStatus" class="status-line" aria-live="polite"></div></div>
+        <div id="careerEvidenceList" class="stack compact"></div>
+        <div class="decision-brief-block"><h4>Writing guidance</h4><label>Preferred tone <input id="writingTone" placeholder="Direct, warm, and specific"></label><label>Strengths to foreground <textarea id="writingFocusAreas" placeholder="Product launches, stakeholder alignment, and measurable customer outcomes"></textarea></label><label>Phrases to avoid <textarea id="writingPhrasesToAvoid" placeholder="passionate self-starter, world-class"></textarea></label><div class="form-actions"><button id="saveWritingGuidance" class="subtle" type="button">Save Writing Guidance</button><div id="writingGuidanceStatus" class="status-line" aria-live="polite"></div></div></div>
+      </section>
     </section>
 
     <section id="interviewView" class="view" role="tabpanel" aria-labelledby="interviewTab">
