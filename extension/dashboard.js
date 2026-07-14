@@ -88,6 +88,11 @@ function setStatus(id, message, kind = '') {
   setStatusElement($(id), message, kind);
 }
 
+// A network request started in the same event turn can otherwise make a
+// status update feel delayed. Yielding one frame lets the browser paint the
+// immediate feedback before potentially slow work begins.
+const nextPaint = () => new Promise((resolve) => requestAnimationFrame(resolve));
+
 function labelForStatus(status) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
@@ -493,11 +498,26 @@ $('startOnboardingTour').addEventListener('click', () => {
 });
 
 $('dismissOnboarding').addEventListener('click', async () => {
+  const button = $('dismissOnboarding');
+  const panel = $('onboardingPanel');
+  const previousPreferences = profilePreferences;
+  const { version: _previousVersion, ...existingState } = profilePreferences?.onboarding_state || {};
+  const onboarding_state = { ...existingState, dismissed: true, force_visible: false, version: ONBOARDING_VERSION };
+  // Hide first so the control feels immediate; restore it only if persistence
+  // actually fails. Updating the cached profile also prevents a concurrent
+  // refresh from putting the panel back while the request is in flight.
+  profilePreferences = { ...(profilePreferences || {}), onboarding_state };
+  onboardingTourActive = false;
+  panel.hidden = true;
+  button.disabled = true;
   try {
-    await updateOnboardingState({ dismissed: true, force_visible: false });
-    $('onboardingPanel').hidden = true;
+    await saveOnboardingState(session.accessToken, onboarding_state);
   } catch (err) {
+    profilePreferences = previousPreferences;
+    panel.hidden = false;
     $('onboardingTourCopy').textContent = `Could not dismiss checklist: ${err.message}`;
+  } finally {
+    button.disabled = false;
   }
 });
 
@@ -1657,6 +1677,7 @@ $('findJobs').addEventListener('click', async () => {
   const originalLabel = btn.textContent;
   btn.textContent = 'Searching sources...';
   setStatus('findJobsStatus', 'Searching Adzuna and USAJOBS...');
+  await nextPaint();
   try {
     const result = await findJobs(session.accessToken);
     const skipped = (result.source_summaries || []).filter((source) => source.status === 'skipped').map((source) => source.source);
@@ -2055,15 +2076,19 @@ async function init() {
   $('accountStatusNav').dataset.signedIn = 'true';
   const linkedJobId = new URLSearchParams(location.search).get('job');
   if (linkedJobId) selectedJobId = linkedJobId;
-  await renderJobList();
-  await renderJobDetail();
-  renderDiscovery();
-  loadResume();
   await loadPreferences();
-  await renderCareerEvidence();
-  await loadInterview();
-  await renderCoach();
-  await refreshOnboarding();
+  // Everything below is independent. Loading in parallel prevents the setup
+  // progress from waiting behind job, coach, and interview queries.
+  await Promise.all([
+    renderJobList(),
+    renderJobDetail(),
+    renderDiscovery(),
+    loadResume(),
+    renderCareerEvidence(),
+    loadInterview(),
+    renderCoach(),
+    refreshOnboarding(),
+  ]);
 }
 
 init();
