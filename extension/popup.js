@@ -283,7 +283,9 @@ $('captureJob').addEventListener('click', async () => {
         return {
           pageTitle: document.title,
           metadata: {
-            title: textOf('.job-details-jobs-unified-top-card__job-title') || textOf('.top-card-layout__title') || textOf('h1'),
+            // Only use a title from a known job-detail region. A generic h1
+            // is often marketing copy and must not replace the tab title.
+            title: textOf('.job-details-jobs-unified-top-card__job-title') || textOf('.top-card-layout__title'),
             company: textOf('.job-details-jobs-unified-top-card__company-name') || textOf('.topcard__org-name-link') || textOf('[data-testid*="company"]'),
             location: textOf('.job-details-jobs-unified-top-card__bullet') || textOf('[data-testid*="location"]'),
           },

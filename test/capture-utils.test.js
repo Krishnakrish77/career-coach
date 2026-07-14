@@ -30,6 +30,15 @@ test('fallback capture removes known navigation lines and signals lower confiden
   assert.ok(capture.jd_text.includes('Own the quality strategy'));
 });
 
+test('generic captures retain the descriptive page title without trusted job metadata', () => {
+  const capture = buildJobCapture({
+    pageTitle: 'Senior Backend Engineer - Acme Careers',
+    metadata: { company: 'Acme' },
+    descriptionCandidates: [{ priority: 45, text: 'Build backend systems that serve customers around the world while collaborating closely with product and infrastructure teams.' }],
+  });
+  assert.equal(capture.title, 'Senior Backend Engineer - Acme Careers');
+});
+
 test('cleaning removes duplicate UI lines without removing the job content', () => {
   assert.equal(cleanCapturedText('Jobs\nJobs\nBuild reliable systems\nBuild reliable systems'), 'Build reliable systems');
   assert.equal(cleanCapturedTitle('Senior QA Engineer | LinkedIn'), 'Senior QA Engineer');
