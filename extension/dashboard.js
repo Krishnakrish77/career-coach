@@ -1231,18 +1231,21 @@ $('showDiscoveryDigest').addEventListener('click', renderDiscovery);
 $('findJobs').addEventListener('click', async () => {
   const btn = $('findJobs');
   btn.disabled = true;
-  setStatus('discoveryStatus', 'Searching sources...');
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Searching sources...';
+  setStatus('findJobsStatus', 'Searching Adzuna and USAJOBS...');
   try {
     const result = await findJobs(session.accessToken);
     const skipped = (result.source_summaries || []).filter((source) => source.status === 'skipped').map((source) => source.source);
     const failed = (result.source_summaries || []).filter((source) => source.status === 'failed').map((source) => source.source);
     const message = `Found ${result.recommendation_count} recommendation${result.recommendation_count === 1 ? '' : 's'}${failed.length ? `. Source failure: ${[...new Set(failed)].join(', ')}; results may be incomplete` : ''}${skipped.length ? `. Unavailable: ${[...new Set(skipped)].join(', ')}` : ''}${result.market_notice ? ` ${result.market_notice}` : ''}.`;
-    setStatus('discoveryStatus', message, failed.length ? 'error' : 'success');
+    setStatus('findJobsStatus', message, failed.length ? 'error' : 'success');
     await renderDiscovery();
   } catch (err) {
-    setStatus('discoveryStatus', `Error: ${err.message}`, 'error');
+    setStatus('findJobsStatus', `Error: ${err.message}`, 'error');
   } finally {
     btn.disabled = false;
+    btn.textContent = originalLabel;
   }
 });
 
