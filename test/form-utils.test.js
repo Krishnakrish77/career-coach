@@ -6,16 +6,18 @@ test('form detection only suggests known safe field categories', () => {
   assert.deepEqual(fields.map((field) => field.type), ['email', 'cover_letter']);
 });
 
-test('same-type fields with different labels get distinct group keys', () => {
-  // Regression test: "First Name" and "Last Name" both match type 'name',
-  // but they are different questions and must not share one filled value.
+test('first and last name are detected as distinct fillable fields', () => {
   const [firstName, lastName] = detectApplicationFields([
     { name: 'first_name', label: 'First Name', tag: 'input' },
     { name: 'last_name', label: 'Last Name', tag: 'input' },
   ]);
-  assert.equal(firstName.type, 'name');
-  assert.equal(lastName.type, 'name');
+  assert.equal(firstName.type, 'first_name');
+  assert.equal(lastName.type, 'last_name');
   assert.notEqual(firstName.groupKey, lastName.groupKey);
+});
+
+test('username fields are not mistaken for a person name', () => {
+  assert.deepEqual(detectApplicationFields([{ name: 'username', tag: 'input' }]), []);
 });
 
 test('two unlabeled essay questions get distinct group keys', () => {

@@ -225,6 +225,13 @@ test('profile preferences are merged into the private profile row', async () => 
   assert.deepEqual(result.target_titles, ['Engineer']);
 });
 
+test('profile preferences include the saved application profile', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ application_profile: { email: 'me@example.com' } }] })]);
+  const result = await getProfilePreferences('token-1', fetchImpl);
+  assert.ok(calls[0].url.includes('application_profile'));
+  assert.equal(result.application_profile.email, 'me@example.com');
+});
+
 test('interview stories save through the private story-bank endpoint', async () => {
   const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ id: 'story-1' }] })]);
   await saveInterviewStory('token-1', { title: 'Launch', skills: ['leadership'] }, fetchImpl);
