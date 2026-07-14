@@ -1,22 +1,24 @@
-name: Supabase migrations
+name: Supabase deploy
 
 # Pull requests preview the migration delta against the linked project. Once
-# merged to main, the migration files are applied to the linked Supabase
-# project through the protected production environment.
+# merged to main, migrations are applied before the Edge Functions are deployed
+# through the protected production environment.
 on:
   pull_request:
     paths:
       - "supabase/migrations/**"
+      - "supabase/functions/**"
       - "supabase/config.toml"
   push:
     branches: [main]
     paths:
       - "supabase/migrations/**"
+      - "supabase/functions/**"
       - "supabase/config.toml"
   workflow_dispatch:
 
 concurrency:
-  group: supabase-migrations-${{ github.event_name }}-${{ github.ref }}
+  group: supabase-deploy-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -43,8 +45,8 @@ jobs:
         run: supabase db push --linked --dry-run --password "$SUPABASE_DB_PASSWORD"
 
   deploy:
-    name: Apply migrations to production
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    name: Apply migrations and deploy functions
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     environment: production
     concurrency:
@@ -56,6 +58,11 @@ jobs:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run test suite before deployment
+        run: npm test
       - uses: supabase/setup-cli@v1
         with:
           version: 2.109.1
@@ -63,3 +70,5 @@ jobs:
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
       - name: Push pending migrations
         run: supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --yes
+      - name: Deploy Edge Functions
+        run: supabase functions deploy tailor extract-resume --project-ref "$SUPABASE_PROJECT_REF" --use-api

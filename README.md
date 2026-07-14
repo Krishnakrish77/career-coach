@@ -140,7 +140,7 @@ npm test          # runs every test/*.test.js via Node's built-in test runner �
 
 Tests mock `fetch` via dependency injection (every network function takes an optional `fetchImpl` parameter) rather than stubbing globals — see `test/supabase-auth.test.js` / `test/supabase-db.test.js` for the pattern.
 
-To iterate on an Edge Function, redeploy the one you changed:
+To iterate on an Edge Function before merging, deploy the one you changed manually:
 ```
 supabase functions deploy tailor --use-api          # after any change to supabase/functions/tailor/index.ts
 supabase functions deploy extract-resume --use-api  # after any change to supabase/functions/extract-resume/index.ts
@@ -157,7 +157,7 @@ git config core.hooksPath .githooks
 ## CI / releases
 
 - **CI** (`.github/workflows/ci.yml`) runs on PRs and pushes to `main` only — not every branch push, and not on docs/icon-only changes (`paths-ignore`). A new push to the same PR cancels the previous run in progress rather than letting a stale one finish. This is a backstop: the pre-push hook above should already catch most failures before they ever reach Actions.
-- **Supabase migrations** (`.github/workflows/supabase-migrations.yml`) runs when `supabase/migrations/**` or `supabase/config.toml` changes. PRs preview the migration diff against the linked project with a dry run. After merge to `main`, pending migrations apply through the protected `production` environment, which should require an explicit deployment approval. Configure repository secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, and either a `SUPABASE_PROJECT_REF` repo variable or secret before relying on it.
+- **Supabase deploy** (`.github/workflows/supabase-deploy.yml`) runs when `supabase/migrations/**`, `supabase/functions/**`, or `supabase/config.toml` changes. PRs preview the migration diff against the linked project with a dry run. After merge to `main`, the protected `production` job runs the test suite, applies pending migrations, then deploys `tailor` and `extract-resume` in that order. Configure repository secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, and either a `SUPABASE_PROJECT_REF` repo variable or secret before relying on it.
 - **Pages** (`.github/workflows/pages.yml`) deploys `docs/*.html` and `docs/assets/**` to GitHub Pages whenever those change on `main` (or via manual `workflow_dispatch`). It stages only those files before upload, so `docs/prds/**` and `docs/tech-debt.md` — repo-internal planning docs, not site content — never get published and don't trigger a redeploy when edited.
 - **Releases** (`.github/workflows/release.yml`) only fire on a `v*` tag push — never on a normal commit. To cut one:
   ```
@@ -188,7 +188,6 @@ The foundation is broader now, but these are still not production-complete:
 - Deep grounded generation for packet items beyond the tailored resume and cover letter. Some packet content is still template-based and review-required.
 - Social/profile enrichment implementation. The PRD exists, but the import/consent/revocation flow is not built.
 - Self-service account/data deletion in the extension.
-- Automated Edge Function deployment; migrations are automated, functions are still deployed manually.
 
 ## License
 
