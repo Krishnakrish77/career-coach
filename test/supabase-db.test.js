@@ -83,7 +83,7 @@ test('insertJob computes dedup/quality fields and creates the paired application
 
   const result = await insertJob(
     'token-1',
-    { url: 'https://www.x.com/job/1/?utm_source=y', title: 'Eng', company: 'Acme', jd_text: 'x'.repeat(300) },
+    { url: 'https://www.x.com/job/1/?utm_source=y', title: 'Eng', company: 'Acme', location: 'Remote', jd_text: 'x'.repeat(300) },
     fetchImpl,
   );
 
@@ -93,6 +93,7 @@ test('insertJob computes dedup/quality fields and creates the paired application
   const jobBody = JSON.parse(calls[1].opts.body);
   assert.equal(jobBody.normalized_url, 'x.com/job/1');
   assert.equal(jobBody.capture_quality, 'complete');
+  assert.equal(jobBody.location, 'Remote');
   assert.equal(typeof jobBody.content_hash, 'string');
   assert.equal(jobBody.content_hash.length, 64);
 

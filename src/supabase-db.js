@@ -60,7 +60,7 @@ export async function getJob(accessToken, jobId, fetchImpl = fetch) {
 // round trip; the index is what actually prevents a race between two
 // captures of the same posting. On conflict, fetch and return the existing
 // row instead of throwing, with `duplicate: true` so the UI can point at it.
-export async function insertJob(accessToken, { url, title, company, jd_text }, fetchImpl = fetch) {
+export async function insertJob(accessToken, { url, title, company, location, jd_text }, fetchImpl = fetch) {
   const normalized_url = normalizeUrl(url);
   const content_hash = await hashContent(jd_text);
   const capture_quality = computeCaptureQuality({ title, company, url, jd_text });
@@ -78,7 +78,7 @@ export async function insertJob(accessToken, { url, title, company, jd_text }, f
       accessToken,
       {
         method: 'POST',
-        body: { url, title, company, jd_text, source: 'manual', normalized_url, content_hash, capture_quality },
+        body: { url, title, company, location, jd_text, source: 'manual', normalized_url, content_hash, capture_quality },
         extraHeaders: { prefer: 'return=representation' },
       },
       fetchImpl,
