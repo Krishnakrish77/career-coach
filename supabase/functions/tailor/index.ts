@@ -5,10 +5,11 @@ import { gradeFromScore, validateAtsScore } from "./scoring.js";
 
 // The operator's own keys — never sent to the client, only used server-side.
 // Set via `supabase secrets set ANTHROPIC_API_KEY=...` / `OPENAI_API_KEY=...` / `GEMINI_API_KEY=...`.
-// Client sends a provider/model *preference*; the operator's key pays for it.
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+const TAILOR_PROVIDER = Deno.env.get("TAILOR_PROVIDER") || "anthropic";
+const TAILOR_MODEL = Deno.env.get("TAILOR_MODEL");
 
 const TAILOR_SCHEMA = {
   type: "object",
@@ -96,25 +97,34 @@ async function callGemini(model: string, systemPrompt: string, userPrompt: strin
   return JSON.parse(data.candidates[0].content.parts[0].text);
 }
 
-// Defaults are the cheapest/lightest model per provider on purpose (cost-
-// conscious default for testing/free-tier use) — not a capability
-// recommendation. Model IDs below aren't backed by a live-verified catalog
-// the way the Anthropic ones are — double check against Google's current
-// model list before relying on it.
+// Defaults are controlled by the hosted deployment, not by the end user.
+// These fallbacks keep local/self-hosted installs simple when TAILOR_MODEL is
+// not explicitly set.
 const DEFAULT_MODEL: Record<string, string> = {
   anthropic: "claude-haiku-4-5",
   openai: "gpt-4o-mini",
   gemini: "gemini-2.5-flash",
 };
 
-// The client sends a model *preference*, but it must resolve to something on
-// this list — otherwise any signed-in user could pass an arbitrary model
-// string (including expensive ones) and the operator's key pays for it.
+// Server-controlled models must resolve to this list. This prevents a bad
+// deploy config from silently routing user traffic to arbitrary model IDs.
 const ALLOWED_MODELS: Record<string, string[]> = {
   anthropic: ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
   openai: ["gpt-4o", "gpt-4o-mini"],
   gemini: ["gemini-2.5-pro", "gemini-2.5-flash"],
 };
+
+function resolveGenerationConfig() {
+  const provider = TAILOR_PROVIDER;
+  if (!Object.keys(ALLOWED_MODELS).includes(provider)) {
+    throw new Error(`TAILOR_PROVIDER must be one of ${Object.keys(ALLOWED_MODELS).join(", ")}`);
+  }
+  const model = TAILOR_MODEL || DEFAULT_MODEL[provider];
+  if (!ALLOWED_MODELS[provider].includes(model)) {
+    throw new Error(`TAILOR_MODEL is not allowed for ${provider}: ${model}`);
+  }
+  return { provider, model };
+}
 
 // Cheap abuse guards that don't need any new infrastructure — both are backed
 // by a single column (applications.last_tailored_at) rather than a separate
@@ -128,17 +138,17 @@ const MAX_INPUT_CHARS = 20000; // defense in depth — the client already trunca
 // manual user_id filtering needed, and no risk of leaking another user's row.
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
-    const { job_id, provider = "anthropic", model } = await req.json();
+    const { job_id } = await req.json();
     if (!job_id) {
       return Response.json({ error: "job_id is required" }, { status: 400 });
     }
-    if (!["anthropic", "openai", "gemini"].includes(provider)) {
-      return Response.json({ error: `Unknown provider: ${provider}` }, { status: 400 });
+    let generationConfig;
+    try {
+      generationConfig = resolveGenerationConfig();
+    } catch (err) {
+      return Response.json({ error: (err as Error).message }, { status: 500 });
     }
-    const resolvedModel = model || DEFAULT_MODEL[provider];
-    if (!ALLOWED_MODELS[provider].includes(resolvedModel)) {
-      return Response.json({ error: `Model not allowed for ${provider}: ${resolvedModel}` }, { status: 400 });
-    }
+    const { provider, model: resolvedModel } = generationConfig;
 
     const { data: job, error: jobError } = await ctx.supabase
       .from("jobs")

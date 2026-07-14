@@ -16,7 +16,7 @@ Career Coach should help users answer: "Is this job worth my time right now?"
 - Prioritize jobs by fit, quality, and urgency.
 - Identify roles that need networking before applying.
 - Flag low-confidence, stale, suspicious, or likely low-return postings.
-- Turn ATS scoring into a broader opportunity scorecard.
+- Turn ATS-style resume-completeness checks, gates, and keyword evidence into a broader opportunity scorecard.
 - Encourage intentional skip decisions, not just more saved jobs.
 
 ## Non-Goals
@@ -50,6 +50,7 @@ Career Coach should help users answer: "Is this job worth my time right now?"
 | OTJ-3 | Add job-quality signals: stale/reposted, vague description, suspicious compensation, external application mismatch, missing company identity, and excessive requirements. | P0 | Use deterministic heuristics first. |
 | OTJ-4 | Add "why this score" UI with evidence from the posting and resume. | P0 | No black-box score only. |
 | OTJ-5 | Add user preferences for target titles, locations, remote policy, salary floor, work authorization, and excluded companies. | P0 | Needed for personalized triage. |
+| OTJ-5a | Add ATS-style simulation in job detail. | P0 | Show resume completeness, hard-gate checks, requirement evidence, and recruiter-search terms without claiming to reproduce a proprietary ATS score. |
 | OTJ-6 | Add queue views: Apply Today, Network First, Needs Review, Skip/Archive. | P1 | Helps users work through jobs intentionally. |
 | OTJ-7 | Add "not interested because" reasons to improve future recommendations. | P1 | Reasons: level, location, pay, industry, company, poor posting, duplicate, other. |
 | OTJ-8 | Add confidence labels to every recommendation. | P1 | Low confidence should trigger review, not assertive advice. |
@@ -59,7 +60,8 @@ Career Coach should help users answer: "Is this job worth my time right now?"
 
 The scorecard should produce separate factors before any aggregate score:
 
-- Resume match: current ATS-style match from `job_matches`.
+- ATS simulation: resume completeness, job-description completeness, hard-gate checks, keyword evidence, and recruiter-search terms.
+- Resume match: current tailored-output match from `job_matches`, when available.
 - Must-have skill gap: requirements listed as required but missing from resume/profile.
 - Seniority fit: inferred role level compared with user's target and experience.
 - Location fit: remote, hybrid, onsite, commute, timezone, relocation.
@@ -84,10 +86,12 @@ Avoid precise claims like "82 percent chance of interview." The product does not
 
 - The jobs list should support triage at a glance without hiding the explanation.
 - Each job detail should show the top three positive signals and top three concerns.
+- ATS simulation should show the evidence row for each important requirement: found in resume, missing from resume, or needs confirmation.
 - "Skip" should be a first-class productive outcome.
 - The UI should let users override recommendations and capture why.
 - The UI should capture both negative feedback and positive signals when users like a job.
 - The scorecard must distinguish "missing from resume" from "missing from your actual experience." If unsure, ask the user to add evidence rather than recommending fabrication.
+- The UI must not label the simulation as an employer's actual ATS result or chance of interview.
 
 ## Data And Technical Implications
 
@@ -120,6 +124,7 @@ Likely schema additions:
 Implementation notes:
 
 - Use deterministic extraction and heuristics where possible before LLM scoring.
+- Keep ATS simulation deterministic and client-side for MVP; persist later only if users need history or trend analysis.
 - Treat external web verification as optional for MVP because extension context and network constraints vary.
 - Persist individual factors, not just aggregate scores.
 - Build tests for score range, missing inputs, low-confidence cases, and recommendation mapping.

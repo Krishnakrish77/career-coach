@@ -49,7 +49,7 @@ Today the product is useful but still fragile as a personal workflow system. A u
 | RAW-2 | Add capture quality states: complete, partial, and needs review. | P0 | Based on title, company, URL, and description length. |
 | RAW-3 | Add editable title, company, location, and job description fields in job detail. | P0 | Current capture will not always parse perfectly. |
 | RAW-4 | Make the latest saved resume the tailoring source of truth. | P0 | Keep the resume UI simple: paste/upload, review health checks, and save. |
-| RAW-5 | Add resume health check before tailoring. | P0 | Missing email, phone, work history, skills, obvious parse failure, too-short resume. |
+| RAW-5 | Add resume health check before tailoring. | P0 | Missing email, phone, work history, skills, obvious parse failure, too-short resume, and scanned/OCR-dependent PDFs that are not ATS-safe. |
 | RAW-6 | Split tailored resume and cover letter into saved artifacts. | P0 | Each artifact should include provider, model, generated date, source job, and source resume row. |
 | RAW-7 | Add copy and plain-text export for each tailored artifact. | P0 | PDF/DOCX can wait for PRD 3. |
 | RAW-8 | Add application notes and next follow-up date. | P0 | Display in job detail and jobs list. |
@@ -62,6 +62,7 @@ Today the product is useful but still fragile as a personal workflow system. A u
 - The dashboard should make the next action visible for each job: review, tailor, apply, follow up, prepare, archive.
 - Users should be able to edit bad capture fields without losing the original source URL.
 - The resume tab should clearly explain that the most recently saved resume is used for tailoring.
+- Uploaded PDFs without a selectable text layer should be rejected with an ATS-readiness warning, not silently converted by AI/OCR.
 - ATS score must be displayed as directional guidance with matched and missing skills, not as a claim that an ATS will accept or reject the candidate.
 
 ## Data And Technical Implications

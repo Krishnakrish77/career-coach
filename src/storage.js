@@ -1,7 +1,6 @@
 // Thin wrappers around chrome.storage.local, shared by popup.js and dashboard.js
-// so both surfaces read/write the same shape without duplicating logic. Only
-// holds the auth session and the provider/model preference now — jobs/resume
-// live in Supabase (see supabase-db.js).
+// so both surfaces read/write the same shape without duplicating logic. Jobs,
+// resume data, preferences, and generation metadata live in Supabase.
 export async function getStorage(keys) {
   return chrome.storage.local.get(keys);
 }

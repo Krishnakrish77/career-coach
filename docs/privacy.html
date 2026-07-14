@@ -47,15 +47,15 @@
     <h2>What we collect</h2>
     <ul>
       <li><strong>Account info</strong> — email and password, handled by Supabase Auth. Passwords are hashed; the maintainer never sees them in plain text.</li>
-      <li><strong>Resume text</strong> — whatever you paste into the Resume tab.</li>
-      <li><strong>Captured job postings</strong> — the URL, title, and page text of jobs you save via the popup.</li>
-      <li><strong>Application status</strong> — the status you set per job (saved/applied/interviewing/offer/rejected).</li>
-      <li><strong>Provider/model preference</strong> — which AI provider you've selected, stored locally in your browser, not in the database.</li>
+      <li><strong>Resume text</strong> — whatever you paste into the Resume tab or extract from an uploaded PDF. PDFs that may be scanned or image-based are flagged for careful review before saving.</li>
+      <li><strong>Captured and imported job postings</strong> — the URL, title, company, location, and job text of roles you save or manually add to Discovery.</li>
+      <li><strong>Application workspace data</strong> — status, notes, follow-up dates, generated artifacts, application packets, submission notes, and preference feedback you enter.</li>
+      <li><strong>Interview and planning data</strong> — story-bank entries, practice answers, prep checklist state, weekly goals, reminders, and retrospectives.</li>
     </ul>
 
     <h2>How it's used</h2>
-    <p>Your resume text and a captured job's text are sent to whichever AI provider you select (Anthropic, OpenAI, or Google Gemini) solely to generate a tailored resume and cover letter for that job. That call happens server-side — your browser never holds an AI provider's API key. We don't use your data for anything beyond that, and we don't sell it.</p>
-    <p>Sending your resume/job text to a third-party AI provider means that provider's own privacy policy also applies to that data: <a href="https://www.anthropic.com/legal/privacy">Anthropic</a>, <a href="https://openai.com/policies/privacy-policy">OpenAI</a>, <a href="https://policies.google.com/privacy">Google</a>.</p>
+    <p>Your resume text and a captured job's text are sent to the server-selected AI provider solely to generate tailored materials and scoring for that job. Uploaded text-layer PDFs may also be sent to the temporary extraction provider until parser-first PDF extraction replaces that fallback. These calls happen server-side — your browser never holds an AI provider's API key or chooses a raw model. We don't use your data for anything beyond the product workflow, and we don't sell it.</p>
+    <p>Sending your resume/job text to a third-party AI provider means that provider's own privacy policy may also apply to that data: <a href="https://www.anthropic.com/legal/privacy">Anthropic</a>, <a href="https://openai.com/policies/privacy-policy">OpenAI</a>, <a href="https://policies.google.com/privacy">Google</a>.</p>
 
     <h2>Where it's stored</h2>
     <p>In a Postgres database hosted by <a href="https://supabase.com/privacy">Supabase</a>, with row-level security scoped to your account — enforced at the database level, not just in the app's UI, so no other user's queries can reach your rows.</p>

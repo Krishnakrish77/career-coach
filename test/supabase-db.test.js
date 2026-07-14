@@ -421,29 +421,30 @@ test('throws with status and body on a non-ok response', async () => {
   await assert.rejects(() => listJobs('token-1', fetchImpl), /Supabase error 401/);
 });
 
-test('tailorJob posts job_id/provider/model to the Edge Function and returns the application row', async () => {
+test('tailorJob posts only job_id to the Edge Function and returns the application row', async () => {
   const { fetchImpl, calls } = fetchSequence([
     fakeResponse({ json: { job_id: 'job-1', tailored_resume: 'resume', cover_letter: 'letter' } }),
   ]);
-  const result = await tailorJob('token-1', 'job-1', { provider: 'anthropic', model: 'claude-opus-4-8' }, fetchImpl);
+  const result = await tailorJob('token-1', 'job-1', fetchImpl);
   assert.equal(calls[0].url, `${SUPABASE_URL}/functions/v1/tailor`);
   assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');
-  assert.deepEqual(JSON.parse(calls[0].opts.body), { job_id: 'job-1', provider: 'anthropic', model: 'claude-opus-4-8' });
+  assert.deepEqual(JSON.parse(calls[0].opts.body), { job_id: 'job-1' });
   assert.equal(result.tailored_resume, 'resume');
 });
 
 test('tailorJob surfaces the Edge Function error message on failure', async () => {
   const { fetchImpl } = fetchSequence([fakeResponse({ ok: false, status: 400, json: { error: 'No resume on file.' } })]);
-  await assert.rejects(() => tailorJob('token-1', 'job-1', {}, fetchImpl), /No resume on file\./);
+  await assert.rejects(() => tailorJob('token-1', 'job-1', fetchImpl), /No resume on file\./);
 });
 
 test('extractResumeFromPdf posts the base64 payload and returns raw_text', async () => {
-  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: { raw_text: 'extracted resume text' } })]);
+  const ats_readiness = { status: 'ok' };
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: { raw_text: 'extracted resume text', ats_readiness } })]);
   const result = await extractResumeFromPdf('token-1', 'BASE64DATA', fetchImpl);
   assert.equal(calls[0].url, `${SUPABASE_URL}/functions/v1/extract-resume`);
   assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');
   assert.deepEqual(JSON.parse(calls[0].opts.body), { pdf_base64: 'BASE64DATA' });
-  assert.equal(result, 'extracted resume text');
+  assert.deepEqual(result, { rawText: 'extracted resume text', atsReadiness: ats_readiness });
 });
 
 test('extractResumeFromPdf surfaces the Edge Function error message on failure', async () => {
