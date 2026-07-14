@@ -15,6 +15,7 @@ import {
   saveOpportunityScorecard,
   addJobFeedback,
   listDiscoveryRecommendations,
+  findJobs,
   resolveDiscoveredJob,
   saveDiscoveryRecommendation,
   importDiscoveredJob,
@@ -278,6 +279,15 @@ test('listDiscoveryRecommendations requests the queue with its discovered job em
     `${SUPABASE_URL}/rest/v1/job_recommendations?select=*,discovered_jobs(*)&order=updated_at.desc&limit=100`,
   );
   assert.equal(result[0].id, 'rec-1');
+});
+
+test('findJobs invokes the authenticated Edge Function', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: { run_id: 'run-1', recommendation_count: 2 } })]);
+  const result = await findJobs('token-1', {}, fetchImpl);
+  assert.equal(result.run_id, 'run-1');
+  assert.equal(calls[0].url, `${SUPABASE_URL}/functions/v1/find-jobs`);
+  assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');
+  assert.deepEqual(JSON.parse(calls[0].opts.body), {});
 });
 
 const LONG_JD_TEXT = 'Detailed responsibilities and requirements for this role. '.repeat(3);

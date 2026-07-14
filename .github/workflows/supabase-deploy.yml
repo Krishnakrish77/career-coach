@@ -71,4 +71,4 @@ jobs:
       - name: Push pending migrations
         run: supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --yes
       - name: Deploy Edge Functions
-        run: supabase functions deploy tailor extract-resume --project-ref "$SUPABASE_PROJECT_REF" --use-api
+        run: supabase functions deploy tailor extract-resume find-jobs --project-ref "$SUPABASE_PROJECT_REF" --use-api

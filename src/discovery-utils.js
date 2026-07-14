@@ -29,6 +29,13 @@ export function buildDiscoveryRecommendation({ job = {}, preferences = {}, liked
     : preferenceFit >= 75 && quality.score >= 60 ? 'strong_match'
       : likedCount >= 3 ? 'like_based'
         : preferences.target_titles?.length ? 'worth_reviewing' : 'needs_preference_review';
-  if (resumeFit != null) reasons.push(`Resume overlap: ${resumeFit}/100.`);
-  return { preference_fit_score: preferenceFit, resume_fit_score: resumeFit, job_quality_score: quality.score, recommendation_label: label, reasoning: { reasons, concerns: quality.concerns, quality, freshness_score: freshness } };
+  // This is the one resume/job keyword signal used in discovery. Keeping the
+  // explanation and stored score tied to the same calculation avoids showing
+  // users competing ATS-style numbers for the same evidence.
+  const atsSummary = resumeFit != null ? `ATS keyword overlap simulation: ${resumeFit}/100.` : null;
+  if (atsSummary) reasons.push(atsSummary);
+  if (job.source) reasons.push(`Source: ${job.source === 'usajobs' ? 'USAJOBS' : job.source === 'adzuna' ? 'Adzuna' : job.source}.`);
+  if (job.source_query) reasons.push(`Search query: ${job.source_query}.`);
+  if (job.description_is_snippet) reasons.push('The source provided only a description snippet; verify details on the original posting.');
+  return { preference_fit_score: preferenceFit, resume_fit_score: resumeFit, job_quality_score: quality.score, recommendation_label: label, reasoning: { reasons, concerns: quality.concerns, quality, freshness_score: freshness, source: job.source || null, source_query: job.source_query || null, ats_simulation: atsSummary, description_is_snippet: Boolean(job.description_is_snippet) } };
 }

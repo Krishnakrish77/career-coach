@@ -11,7 +11,7 @@ Career Coach is a Chrome extension that helps you run a job search: capture post
 - **ATS simulation + opportunity triage** — job detail shows a deterministic ATS-style simulation with parse readiness, hard-gate checks, keyword/search evidence, and broader fit/quality triage
 - **Resume upload** — paste text, or upload a PDF; scanned/image-only PDFs are flagged because they are poor ATS inputs
 - **Application packets** — create review-required packets with resume, cover letter, recruiter note, LinkedIn note, short answer, copy/text/DOCX/PDF export, and submission tracking
-- **Discovery queue** — manually import public jobs, score them against preferences, and like/save/skip/hide recommendations before they enter the tracker
+- **Discovery queue** — search Adzuna and USAJOBS on demand (or manually import public jobs), score recommendations against preferences, and like/save/skip/hide them before they enter the tracker
 - **Interview prep** — maintain a STAR story bank, draft story seeds from your resume, generate likely questions, match stories, save practice feedback, and track prep checklists
 - **Weekly plan** — set capacity/targets, generate a focused plan, manage reminders, and save a weekly retrospective
 - **Track** — per-job application status (`saved` -> `applied` -> `interviewing` -> `offer`/`rejected`), notes, and next follow-up dates
@@ -32,7 +32,7 @@ Extension (Chrome, MV3)
    ├─ storage.js                         — chrome.storage.local wrapper for the auth session
    ├─ supabase-auth.js                   — email/password auth against Supabase's GoTrue REST API
    ├─ ats-utils.js                       — deterministic ATS-style parse, gate, keyword, and searchability simulation
-   └─ supabase-db.js                     — PostgREST calls (jobs/resumes/applications) + calls the `tailor`/`extract-resume` Edge Functions
+   └─ supabase-db.js                     — PostgREST calls (jobs/resumes/applications) + calls the `tailor`/`extract-resume`/`find-jobs` Edge Functions
 
 Supabase
 ├─ Postgres — resumes, profiles, jobs, applications, job_matches, packets, discovery, interviews, coaching (RLS-scoped per user)
@@ -42,9 +42,11 @@ Supabase
 │  in the browser. Enforces a model allowlist, a per-job debounce,
 │  a per-user hourly cap before spending on a call, and also computes the tailoring match score
 │  (stored in `job_matches`) as part of the same call.
-└─ Edge Function `extract-resume` — extracts embedded/selectable text with a parser,
+├─ Edge Function `extract-resume` — extracts embedded/selectable text with a parser,
    flags low-confidence PDFs for review, and keeps the legacy AI fallback disabled
    unless an operator explicitly enables it.
+└─ Edge Function `find-jobs` — calls allowlisted public-job API connectors with
+   server-side credentials, then stores a private, scored discovery queue.
 ```
 
 Why a backend at all, for a browser extension: RLS is what makes per-user data isolation real (not just "the UI happens to filter"), and moving the LLM call server-side means the operator's API key — not each user's own — pays for tailoring, which is what makes signup viable for people who don't have their own Anthropic/OpenAI account.
@@ -105,10 +107,17 @@ supabase/config.toml          Local Supabase project config (synced to the live 
    supabase secrets set GEMINI_API_KEY=...          # only if TAILOR_PROVIDER=gemini
    ```
 
-5. **Deploy both Edge Functions.**
+   **Configure public job-source credentials for Find Jobs.** These stay only in the Edge Function. Adzuna is used for US and India searches; USAJOBS is used for US public-sector roles. A missing source credential is reported as skipped, so one available source can still return results.
+   ```
+   supabase secrets set ADZUNA_APP_ID=... ADZUNA_APP_KEY=...
+   supabase secrets set USAJOBS_API_KEY=... USAJOBS_USER_AGENT='Career Coach support@example.com'
+   ```
+
+5. **Deploy all Edge Functions.**
    ```
    supabase functions deploy tailor --use-api
    supabase functions deploy extract-resume --use-api
+   supabase functions deploy find-jobs --use-api
    ```
    (`--use-api` bundles server-side without needing Docker running locally.)
 
@@ -144,6 +153,7 @@ To iterate on an Edge Function before merging, deploy the one you changed manual
 ```
 supabase functions deploy tailor --use-api          # after any change to supabase/functions/tailor/index.ts
 supabase functions deploy extract-resume --use-api  # after any change to supabase/functions/extract-resume/index.ts
+supabase functions deploy find-jobs --use-api       # after any change to supabase/functions/find-jobs/index.ts
 ```
 
 To add a schema change: `supabase migration new <name>`, edit the generated SQL, then `supabase db push --password '...'`.
@@ -157,7 +167,7 @@ git config core.hooksPath .githooks
 ## CI / releases
 
 - **CI** (`.github/workflows/ci.yml`) runs on PRs and pushes to `main` only — not every branch push, and not on docs/icon-only changes (`paths-ignore`). A new push to the same PR cancels the previous run in progress rather than letting a stale one finish. This is a backstop: the pre-push hook above should already catch most failures before they ever reach Actions.
-- **Supabase deploy** (`.github/workflows/supabase-deploy.yml`) runs when `supabase/migrations/**`, `supabase/functions/**`, or `supabase/config.toml` changes. PRs preview the migration diff against the linked project with a dry run. After merge to `main`, the protected `production` job runs the test suite, applies pending migrations, then deploys `tailor` and `extract-resume` in that order. Configure repository secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, and either a `SUPABASE_PROJECT_REF` repo variable or secret before relying on it.
+- **Supabase deploy** (`.github/workflows/supabase-deploy.yml`) runs when `supabase/migrations/**`, `supabase/functions/**`, or `supabase/config.toml` changes. PRs preview the migration diff against the linked project with a dry run. After merge to `main`, the protected `production` job runs the test suite, applies pending migrations, then deploys `tailor`, `extract-resume`, and `find-jobs`. Configure repository secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, and either a `SUPABASE_PROJECT_REF` repo variable or secret before relying on it.
 - **Pages** (`.github/workflows/pages.yml`) deploys `docs/*.html` and `docs/assets/**` to GitHub Pages whenever those change on `main` (or via manual `workflow_dispatch`). It stages only those files before upload, so `docs/prds/**` and `docs/tech-debt.md` — repo-internal planning docs, not site content — never get published and don't trigger a redeploy when edited.
 - **Releases** (`.github/workflows/release.yml`) only fire on a `v*` tag push — never on a normal commit. To cut one:
   ```
@@ -182,7 +192,7 @@ git config core.hooksPath .githooks
 
 The foundation is broader now, but these are still not production-complete:
 
-- Automated job-source ingestion or broad job-board scanning. Discovery is currently user-imported/manual.
+- Automated scheduled ingestion or broad job-board crawling. Discovery is user-clicked, API-first, and limited to allowlisted public sources.
 - Rich preference learning from accumulated liked/skipped/applied jobs. Current scoring is deterministic and early.
 - PDF extraction fallback review. Parser-first text extraction is the default; operators should keep the AI fallback disabled unless they need it for a verified parser incompatibility.
 - Deep grounded generation for packet items beyond the tailored resume and cover letter. Some packet content is still template-based and review-required.

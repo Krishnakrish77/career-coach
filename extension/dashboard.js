@@ -14,6 +14,7 @@ import {
   saveOpportunityScorecard,
   addJobFeedback,
   listDiscoveryRecommendations,
+  findJobs,
   resolveDiscoveredJob,
   saveDiscoveryRecommendation,
   updateDiscoveryStatus,
@@ -1134,7 +1135,7 @@ async function renderDiscovery() {
     const recommendations = await listDiscoveryRecommendations(session.accessToken);
     const active = recommendations.filter((item) => ['new', 'seen'].includes(item.status));
     const strong = active.filter((item) => item.recommendation_label === 'strong_match').length;
-    $('discoveryDigest').textContent = active.length ? `${active.length} role${active.length === 1 ? '' : 's'} waiting for review${strong ? `, including ${strong} strong match${strong === 1 ? '' : 'es'}` : ''}. Recommendations are user-imported and may no longer be open.` : 'No new recommendations this week.';
+    $('discoveryDigest').textContent = active.length ? `${active.length} role${active.length === 1 ? '' : 's'} waiting for review${strong ? `, including ${strong} strong match${strong === 1 ? '' : 'es'}` : ''}. Verify availability on the original posting.` : 'No new recommendations this week.';
     list.replaceChildren();
     if (!recommendations.length) return list.appendChild(emptyState('No discoveries yet. Import a public job URL or paste a role above.'));
     for (const recommendation of recommendations) {
@@ -1157,7 +1158,9 @@ async function renderDiscovery() {
 
       const meta = document.createElement('div');
       meta.className = 'small';
-      meta.textContent = [job.company, job.location, discoveryLabel(recommendation.recommendation_label)].filter(Boolean).join(' · ');
+      const sourceLabel = job.source === 'usajobs' ? 'USAJOBS' : job.source === 'adzuna' ? 'Adzuna' : job.source;
+      const freshness = recommendation.reasoning?.freshness_score === 100 ? 'Fresh' : recommendation.reasoning?.freshness_score === 70 ? 'Recent' : 'Older';
+      meta.textContent = [job.company, job.location, discoveryLabel(recommendation.recommendation_label), sourceLabel, job.source_query ? `“${job.source_query}”` : '', freshness].filter(Boolean).join(' · ');
 
       const why = document.createElement('div');
       why.className = 'small';
@@ -1224,6 +1227,24 @@ async function renderDiscovery() {
   }
 }
 $('showDiscoveryDigest').addEventListener('click', renderDiscovery);
+
+$('findJobs').addEventListener('click', async () => {
+  const btn = $('findJobs');
+  btn.disabled = true;
+  setStatus('discoveryStatus', 'Searching sources...');
+  try {
+    const result = await findJobs(session.accessToken);
+    const skipped = (result.source_summaries || []).filter((source) => source.status === 'skipped').map((source) => source.source);
+    const failed = (result.source_summaries || []).filter((source) => source.status === 'failed').map((source) => source.source);
+    const message = `Found ${result.recommendation_count} recommendation${result.recommendation_count === 1 ? '' : 's'}${failed.length ? `. Source failure: ${[...new Set(failed)].join(', ')}; results may be incomplete` : ''}${skipped.length ? `. Unavailable: ${[...new Set(skipped)].join(', ')}` : ''}${result.market_notice ? ` ${result.market_notice}` : ''}.`;
+    setStatus('discoveryStatus', message, failed.length ? 'error' : 'success');
+    await renderDiscovery();
+  } catch (err) {
+    setStatus('discoveryStatus', `Error: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 $('importDiscovery').addEventListener('click', async () => {
   const url = $('discoveryUrl').value.trim();

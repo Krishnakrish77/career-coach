@@ -30,3 +30,17 @@ test('freshness reflects how long ago the posting was first seen, not the time o
   const neverSeen = buildDiscoveryRecommendation({ job: { source_url: 'https://x.test' } });
   assert.equal(neverSeen.reasoning.freshness_score, 100);
 });
+
+test('connector provenance and snippet warning are included in recommendation reasoning', () => {
+  const recommendation = buildDiscoveryRecommendation({
+    job: { source_url: 'https://example.test/job', source: 'adzuna', source_query: 'Product Manager remote', description_is_snippet: true, jd_text: 'Product strategy analytics roadmap delivery'.repeat(20) },
+    preferences: { target_titles: ['Product Manager'] },
+    resumeText: 'Product manager with analytics and roadmap delivery experience.',
+  });
+  assert.ok(recommendation.reasoning.reasons.some((reason) => reason.includes('Adzuna')));
+  assert.ok(recommendation.reasoning.reasons.some((reason) => reason.includes('Search query')));
+  assert.ok(recommendation.reasoning.reasons.some((reason) => reason.includes('snippet')));
+  assert.match(recommendation.reasoning.ats_simulation, /ATS keyword overlap simulation/);
+  assert.match(recommendation.reasoning.ats_simulation, new RegExp(`${recommendation.resume_fit_score}/100`));
+  assert.equal(recommendation.reasoning.reasons.filter((reason) => /simulation|Resume overlap/.test(reason)).length, 1);
+});

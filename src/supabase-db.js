@@ -231,6 +231,19 @@ export async function listDiscoveryRecommendations(accessToken, fetchImpl = fetc
   return restRequest('job_recommendations?select=*,discovered_jobs(*)&order=updated_at.desc&limit=100', accessToken, {}, fetchImpl);
 }
 
+// Source credentials and connector calls remain in the Edge Function. The
+// dashboard sends only the signed-in user's JWT and an optional bounded limit.
+export async function findJobs(accessToken, { limit } = {}, fetchImpl = fetch) {
+  const res = await fetchImpl(`${SUPABASE_URL}/functions/v1/find-jobs`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(limit ? { limit } : {}),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Find Jobs error ${res.status}`);
+  return data;
+}
+
 // Shorter/blank descriptions hash to a value shared by every other blank
 // import (hashContent('') is a constant) — below this length, a content-hash
 // match isn't distinctive enough to trust as "the same posting."
