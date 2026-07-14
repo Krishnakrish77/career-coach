@@ -1010,6 +1010,56 @@ button.subtle {
   gap: var(--space-3);
 }
 
+.discovery-controls,
+.discovery-actions,
+.discovery-metrics {
+  flex-wrap: wrap;
+}
+
+.discovery-metrics {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.discovery-metric {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.discovery-reason {
+  min-height: 32px;
+  margin: 0;
+}
+
+.card-action-status {
+  min-height: 0;
+}
+
+.inline-action {
+  min-height: 26px;
+  margin-left: var(--space-2);
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.discovery-import summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.discovery-import,
+#discoveryList {
+  margin-top: var(--space-4);
+}
+
+.discovery-import[open] summary {
+  margin-bottom: var(--space-3);
+}
+
 @media (max-width: 800px) {
   .topnav {
     flex-wrap: wrap;
