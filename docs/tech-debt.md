@@ -65,3 +65,14 @@ However, text-layer PDFs still use a temporary AI extraction fallback. That is o
 - [x] Add parser-first extraction for embedded PDF text.
 - [x] Keep the AI fallback behind an explicit server-side flag.
 - [ ] Add integration tests using representative text-layer, scanned, image-heavy, and malformed PDF fixtures in the Edge runtime.
+
+## Automate Supabase Edge Function Deployment
+
+Status: Resolved
+Area: GitHub Actions, Supabase Edge Functions
+Resolved: 2026-07-14
+
+The `Supabase deploy` workflow applies pending migrations before deploying the
+repository's `tailor` and `extract-resume` functions after relevant changes
+merge to `main`. It uses the protected `production` environment and the same
+project reference/access-token configuration for both operations.
