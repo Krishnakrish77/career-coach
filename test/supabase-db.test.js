@@ -12,6 +12,7 @@ import {
   getLatestResume,
   getProfilePreferences,
   saveProfilePreferences,
+  saveOnboardingState,
   saveOpportunityScorecard,
   addJobFeedback,
   listDiscoveryRecommendations,
@@ -223,6 +224,15 @@ test('profile preferences are merged into the private profile row', async () => 
   assert.equal(calls[0].opts.headers.prefer, 'resolution=merge-duplicates,return=representation');
   assert.equal(JSON.parse(calls[0].opts.body).remote_preference, 'remote');
   assert.deepEqual(result.target_titles, ['Engineer']);
+});
+
+test('onboarding state is merged into the private profile row', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: [{ onboarding_state: { version: 1, dismissed: true } }] })]);
+  const state = { version: 1, dismissed: true };
+  const result = await saveOnboardingState('token-1', state, fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/rest/v1/profiles?on_conflict=user_id`);
+  assert.deepEqual(JSON.parse(calls[0].opts.body).onboarding_state, state);
+  assert.deepEqual(result.onboarding_state, state);
 });
 
 test('interview stories save through the private story-bank endpoint', async () => {
