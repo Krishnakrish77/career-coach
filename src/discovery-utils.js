@@ -1,4 +1,5 @@
 import { assessJobQuality } from './opportunity-utils.js';
+import { atsSimulationSummary } from './find-jobs-utils.js';
 
 function includes(value, candidates) {
   const text = (value || '').toLowerCase();
@@ -30,5 +31,10 @@ export function buildDiscoveryRecommendation({ job = {}, preferences = {}, liked
       : likedCount >= 3 ? 'like_based'
         : preferences.target_titles?.length ? 'worth_reviewing' : 'needs_preference_review';
   if (resumeFit != null) reasons.push(`Resume overlap: ${resumeFit}/100.`);
-  return { preference_fit_score: preferenceFit, resume_fit_score: resumeFit, job_quality_score: quality.score, recommendation_label: label, reasoning: { reasons, concerns: quality.concerns, quality, freshness_score: freshness } };
+  if (job.source) reasons.push(`Source: ${job.source === 'usajobs' ? 'USAJOBS' : job.source === 'adzuna' ? 'Adzuna' : job.source}.`);
+  if (job.source_query) reasons.push(`Search query: ${job.source_query}.`);
+  const atsSummary = atsSimulationSummary(resumeText, job.jd_text || '');
+  if (atsSummary) reasons.push(atsSummary);
+  if (job.description_is_snippet) reasons.push('The source provided only a description snippet; verify details on the original posting.');
+  return { preference_fit_score: preferenceFit, resume_fit_score: resumeFit, job_quality_score: quality.score, recommendation_label: label, reasoning: { reasons, concerns: quality.concerns, quality, freshness_score: freshness, source: job.source || null, source_query: job.source_query || null, ats_simulation: atsSummary, description_is_snippet: Boolean(job.description_is_snippet) } };
 }
