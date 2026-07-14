@@ -32,3 +32,14 @@ test('decision brief prioritizes an expired posting and does not claim missing e
   assert.equal(brief.gaps[0].text, 'No required-skill gaps were detected.');
   assert.match(brief.role[2].text, /thin/);
 });
+
+test('decision brief surfaces an unresolved work-authorization gate as a risk', () => {
+  const brief = buildApplicationDecisionBrief({
+    job: { title: 'Engineer', jd_text: 'x'.repeat(400) },
+    atsSimulation: {
+      status: 'needs_review', overall_score: 70, confidence: 'medium', matched_required: [], missing_required: [],
+      gates: [{ key: 'work_authorization', label: 'Work authorization', status: 'unknown', explanation: 'The posting mentions authorization or sponsorship; confirm your eligibility before applying.' }],
+    },
+  });
+  assert.ok(brief.gaps.some((item) => item.label === 'Work authorization'));
+});

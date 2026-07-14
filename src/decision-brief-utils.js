@@ -16,7 +16,7 @@ function detail(label, text, tone = 'neutral') {
 export function buildApplicationDecisionBrief({ job = {}, scorecard = null, atsSimulation = null } = {}) {
   const matched = atsSimulation?.matched_required || [];
   const missing = atsSimulation?.missing_required || [];
-  const concerningGates = (atsSimulation?.gates || []).filter((gate) => ['block', 'warn'].includes(gate.status));
+  const concerningGates = (atsSimulation?.gates || []).filter((gate) => ['block', 'warn', 'unknown'].includes(gate.status));
   const preferences = ['seniority_fit', 'location_fit', 'compensation_fit', 'work_authorization']
     .map((key) => factor(scorecard, key))
     .filter(Boolean)
