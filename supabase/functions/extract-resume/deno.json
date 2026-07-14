@@ -2,6 +2,6 @@
   "imports": {
     "@supabase/functions-js": "jsr:@supabase/functions-js@^2",
     "@supabase/server": "npm:@supabase/server@^1",
-    "unpdf": "npm:unpdf@0.12.0"
+    "unpdf": "npm:unpdf@1.6.2"
   }
 }
