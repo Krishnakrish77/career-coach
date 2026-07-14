@@ -2,6 +2,7 @@ import { signIn, getValidSession, requestPasswordReset } from '../src/supabase-a
 import { getStorage, setStorage } from '../src/storage.js';
 import { listJobs, insertJob, getProfilePreferences } from '../src/supabase-db.js';
 import { detectApplicationFields } from '../src/form-utils.js';
+import { buildJobCapture } from '../src/capture-utils.js';
 
 const $ = (id) => document.getElementById(id);
 let session = null;
@@ -254,21 +255,56 @@ $('captureJob').addEventListener('click', async () => {
       return;
     }
 
-    const [{ result: pageText }] = await chrome.scripting.executeScript({
+    const [{ result: page }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => document.body.innerText,
+      func: () => {
+        const textOf = (selector) => document.querySelector(selector)?.innerText?.trim() || '';
+        const descriptionSelectors = [
+          ['[data-job-description]', 100],
+          ['[data-testid*="job-description"]', 100],
+          ['.jobs-description__content', 100],
+          ['.jobs-description-content__text', 100],
+          ['[class*="jobs-description"]', 90],
+          ['[class*="job-description"]', 85],
+          ['main article', 45],
+          ['article', 35],
+          ['main', 20],
+        ];
+        const seen = new Set();
+        const descriptionCandidates = descriptionSelectors
+          .map(([selector, priority]) => {
+            const element = document.querySelector(selector);
+            const text = element?.innerText?.trim() || '';
+            if (!text || seen.has(text)) return null;
+            seen.add(text);
+            return { priority, text };
+          })
+          .filter(Boolean);
+        return {
+          pageTitle: document.title,
+          metadata: {
+            title: textOf('.job-details-jobs-unified-top-card__job-title') || textOf('.top-card-layout__title') || textOf('h1'),
+            company: textOf('.job-details-jobs-unified-top-card__company-name') || textOf('.topcard__org-name-link') || textOf('[data-testid*="company"]'),
+            location: textOf('.job-details-jobs-unified-top-card__bullet') || textOf('[data-testid*="location"]'),
+          },
+          descriptionCandidates,
+          fallbackText: document.body.innerText,
+        };
+      },
     });
+    const capture = buildJobCapture({ ...page, pageTitle: page?.pageTitle || tab.title });
     const job = await insertJob(session.accessToken, {
       url: tab.url,
-      title: tab.title,
-      company: null,
-      jd_text: String(pageText || '').slice(0, 12000),
+      title: capture.title || tab.title,
+      company: capture.company || null,
+      location: capture.location || null,
+      jd_text: capture.jd_text,
     });
     await renderRecentJobs();
     if (job.duplicate) {
       renderDuplicateNotice(job);
     } else {
-      setStatus('captureStatus', 'Saved. Open the dashboard to tailor it.', 'success');
+      setStatus('captureStatus', capture.source === 'focused' ? 'Saved focused job description. Open the dashboard to tailor it.' : 'Saved with fallback page text. Review the description before tailoring.', capture.source === 'focused' ? 'success' : '');
       setTimeout(() => setStatus('captureStatus', ''), 2500);
     }
   } catch (err) {
