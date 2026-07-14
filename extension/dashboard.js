@@ -392,12 +392,19 @@ async function updateOnboardingState(fields) {
   profilePreferences = { ...(profilePreferences || {}), onboarding_state };
 }
 
-async function refreshOnboarding({ advanceTour = false } = {}) {
+async function refreshOnboarding({ advanceTour = false, recommendations: knownRecommendations } = {}) {
   const panel = $('onboardingPanel');
+  // Dismissal is persisted on the cached profile row. Do not spend four more
+  // requests after every user action when this user has opted out.
+  if (profilePreferences?.onboarding_state?.dismissed) {
+    panel.hidden = true;
+    return;
+  }
   try {
     const [preferences, resume, recommendations, jobs] = await Promise.all([
       getProfilePreferences(session.accessToken), getLatestResume(session.accessToken),
-      listDiscoveryRecommendations(session.accessToken), listJobs(session.accessToken),
+      Array.isArray(knownRecommendations) ? Promise.resolve(knownRecommendations) : listDiscoveryRecommendations(session.accessToken),
+      listJobs(session.accessToken),
     ]);
     profilePreferences = { ...(profilePreferences || {}), ...(preferences || {}) };
     onboardingSteps = buildOnboardingSteps({ preferences: profilePreferences, resume, recommendations, jobs });
@@ -1283,7 +1290,10 @@ async function renderDiscovery() {
     const strong = active.filter((item) => item.recommendation_label === 'strong_match').length;
     $('discoveryDigest').textContent = active.length ? `${active.length} role${active.length === 1 ? '' : 's'} waiting for review${strong ? `, including ${strong} strong match${strong === 1 ? '' : 'es'}` : ''}. Verify availability on the original posting.` : 'No new recommendations this week.';
     list.replaceChildren();
-    if (!recommendations.length) return list.appendChild(emptyState('No discoveries yet. Choose Find Jobs to search your saved preferences, or expand Import a job manually.'));
+    if (!recommendations.length) {
+      list.appendChild(emptyState('No discoveries yet. Choose Find Jobs to search your saved preferences, or expand Import a job manually.'));
+      return recommendations;
+    }
     for (const recommendation of recommendations) {
       const job = recommendation.discovered_jobs;
       const card = document.createElement('article');
@@ -1356,8 +1366,8 @@ async function renderDiscovery() {
           await task();
           setStatusElement(actionStatus, successMessage, 'success');
           await briefly();
-          await renderDiscovery();
-          await refreshOnboarding({ advanceTour: true });
+          const recommendations = await renderDiscovery();
+          await refreshOnboarding({ advanceTour: true, recommendations });
         } catch (err) {
           setStatusElement(actionStatus, `Error: ${err.message}`, 'error');
           setCardBusy(false);
@@ -1395,8 +1405,8 @@ async function renderDiscovery() {
             showFindJobsNotice(`Restored roles from ${job.company || 'this company'}.`, 'success');
             await renderDiscovery();
           });
-          await renderDiscovery();
-          await refreshOnboarding({ advanceTour: true });
+          const recommendations = await renderDiscovery();
+          await refreshOnboarding({ advanceTour: true, recommendations });
         } catch (err) { setStatusElement(actionStatus, `Error: ${err.message}`, 'error'); setCardBusy(false); }
       });
       actionButtons.push(hide);
@@ -1421,8 +1431,10 @@ async function renderDiscovery() {
       card.append(title, meta, metrics, why, concernEl, reason, actions, actionStatus);
       list.appendChild(card);
     }
+    return recommendations;
   } catch (err) {
     list.replaceChildren(emptyState(`Could not load discovery: ${err.message}`));
+    return null;
   }
 }
 $('showDiscoveryDigest').addEventListener('click', renderDiscovery);
@@ -1440,8 +1452,8 @@ $('findJobs').addEventListener('click', async () => {
     const failed = (result.source_summaries || []).filter((source) => source.status === 'failed').map((source) => source.source);
     const message = `Found ${result.recommendation_count} recommendation${result.recommendation_count === 1 ? '' : 's'}${failed.length ? `. Source failure: ${[...new Set(failed)].join(', ')}; results may be incomplete` : ''}${skipped.length ? `. Unavailable: ${[...new Set(skipped)].join(', ')}` : ''}${result.market_notice ? ` ${result.market_notice}` : ''}.`;
     setStatus('findJobsStatus', message, failed.length ? 'error' : 'success');
-    await renderDiscovery();
-    await refreshOnboarding({ advanceTour: true });
+    const recommendations = await renderDiscovery();
+    await refreshOnboarding({ advanceTour: true, recommendations });
   } catch (err) {
     setStatus('findJobsStatus', `Error: ${err.message}`, 'error');
   } finally {
@@ -1462,8 +1474,8 @@ $('importDiscovery').addEventListener('click', async () => {
     const recommendation = buildDiscoveryRecommendation({ job: { ...job, first_seen_at: discovered.first_seen_at }, preferences: profilePreferences, resumeText: resume?.raw_text || '' });
     await saveDiscoveryRecommendation(session.accessToken, discovered.id, recommendation);
     setStatus('discoveryStatus', 'Added to your discovery queue.', 'success');
-    await renderDiscovery();
-    await refreshOnboarding({ advanceTour: true });
+    const recommendations = await renderDiscovery();
+    await refreshOnboarding({ advanceTour: true, recommendations });
   } catch (err) { setStatus('discoveryStatus', `Error: ${err.message}`, 'error'); }
   finally { btn.disabled = false; }
 });
@@ -1738,7 +1750,7 @@ async function init() {
   await renderJobDetail();
   renderDiscovery();
   loadResume();
-  loadPreferences();
+  await loadPreferences();
   await loadInterview();
   await renderCoach();
   await refreshOnboarding();
