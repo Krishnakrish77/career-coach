@@ -1,11 +1,23 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
-import { classifyPostingResponse, detectAtsPosting, parsePublicPostingUrl } from "../../../src/job-health-utils.js";
+import { classifyPostingResponse, detectAtsPosting, isPrivateIpAddress, parsePublicPostingUrl } from "../../../src/job-health-utils.js";
 
 const CHECK_TIMEOUT_MS = 8_000;
 const JOB_COOLDOWN_SECONDS = 5 * 60;
 const MAX_CHECKS_PER_HOUR = 20;
 const corsHeaders = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, x-client-info, apikey, content-type" };
+
+// A hostname can look public and still resolve to an internal address, so the
+// blocklist has to run against the resolved IPs, not just the hostname text.
+async function assertResolvesToPublicAddress(hostname: string) {
+  const [a, aaaa] = await Promise.all([
+    Deno.resolveDns(hostname, "A").catch(() => []),
+    Deno.resolveDns(hostname, "AAAA").catch(() => []),
+  ]);
+  const addresses = [...a, ...aaaa];
+  if (!addresses.length) throw new Error("The posting host could not be resolved.");
+  if (addresses.some(isPrivateIpAddress)) throw new Error("This URL resolves to a private network address.");
+}
 
 async function fetchWithTimeout(url: string) {
   const controller = new AbortController();
@@ -13,8 +25,10 @@ async function fetchWithTimeout(url: string) {
   try {
     let nextUrl = url;
     // Do not let fetch automatically follow a redirect to an internal target.
-    // Every hop receives the same public-host validation as the original URL.
+    // Every hop receives the same public-host validation as the original URL,
+    // including a fresh DNS-resolved-address check.
     for (let redirects = 0; redirects <= 3; redirects += 1) {
+      await assertResolvesToPublicAddress(new URL(nextUrl).hostname);
       const response = await fetch(nextUrl, {
         method: "GET",
         redirect: "manual",

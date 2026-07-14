@@ -14,6 +14,17 @@ const PRIVATE_IPV4 = [
   /^23\d\./,
 ];
 
+// A hostname that isn't itself a private literal can still resolve to one.
+// Callers must resolve DNS and check every returned address with this before
+// connecting - checking the hostname string alone does not stop that bypass.
+export function isPrivateIpAddress(ip) {
+  const value = String(ip || '').toLowerCase();
+  const v4Mapped = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4Mapped) return PRIVATE_IPV4.some((pattern) => pattern.test(v4Mapped[1]));
+  if (value.includes(':')) return value === '::' || value === '::1' || /^fe[89ab]/.test(value) || /^f[cd]/.test(value);
+  return PRIVATE_IPV4.some((pattern) => pattern.test(value));
+}
+
 export function parsePublicPostingUrl(value) {
   let url;
   try {
