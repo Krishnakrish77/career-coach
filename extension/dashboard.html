@@ -24,6 +24,11 @@
   </header>
 
   <main id="dashboardContent" class="dashboard-shell" tabindex="-1">
+    <section id="onboardingPanel" class="panel onboarding-panel" hidden aria-labelledby="onboardingTitle">
+      <div class="panel-header"><div><span class="eyebrow">Getting started</span><h2 id="onboardingTitle">Set up your job search</h2><div id="onboardingTourCopy" class="small"></div></div><button id="dismissOnboarding" class="subtle" type="button">Dismiss</button></div>
+      <div id="onboardingSteps" class="onboarding-steps"></div>
+      <div class="row onboarding-actions"><button id="startOnboardingTour" class="primary" type="button">Guide me</button><button id="restartOnboarding" class="subtle" type="button">Restart checklist</button></div>
+    </section>
     <section id="jobsView" class="view active" role="tabpanel" aria-labelledby="jobsTab">
       <div class="view-toolbar">
         <div class="toolbar-copy">
@@ -186,6 +191,7 @@
           <button id="savePreferences" class="primary" type="button">Save Preferences</button>
           <div id="preferencesStatus" class="status-line" aria-live="polite"></div>
         </div>
+        <button id="restartOnboardingFromSettings" class="subtle" type="button">Restart getting started guide</button>
       </div>
     </section>
   </main>

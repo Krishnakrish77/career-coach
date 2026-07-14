@@ -169,7 +169,7 @@ export async function getLatestResume(accessToken, fetchImpl = fetch) {
 // profile already or not.
 export async function getProfilePreferences(accessToken, fetchImpl = fetch) {
   const rows = await restRequest(
-    'profiles?select=target_titles,title_aliases,target_locations,remote_preference,salary_min,industries,seniority_targets,company_sizes,work_authorization,excluded_companies&limit=1',
+    'profiles?select=target_titles,title_aliases,target_locations,remote_preference,salary_min,industries,seniority_targets,company_sizes,work_authorization,excluded_companies,onboarding_state&limit=1',
     accessToken,
     {},
     fetchImpl,
@@ -184,6 +184,20 @@ export async function saveProfilePreferences(accessToken, preferences, fetchImpl
     {
       method: 'POST',
       body: { ...preferences, updated_at: new Date().toISOString() },
+      extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
+    },
+    fetchImpl,
+  );
+  return profile;
+}
+
+export async function saveOnboardingState(accessToken, onboardingState, fetchImpl = fetch) {
+  const [profile] = await restRequest(
+    'profiles?on_conflict=user_id',
+    accessToken,
+    {
+      method: 'POST',
+      body: { onboarding_state: onboardingState, updated_at: new Date().toISOString() },
       extraHeaders: { prefer: 'resolution=merge-duplicates,return=representation' },
     },
     fetchImpl,
