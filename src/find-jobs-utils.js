@@ -2,6 +2,7 @@
 // this small, source-neutral shape so discovery never depends on crawling.
 const US_LOCATION_RE = /\b(us|u\.s\.|united states|america|new york|california|texas|washington)\b/i;
 const INDIA_LOCATION_RE = /\b(india|bengaluru|bangalore|mumbai|delhi|hyderabad|pune|chennai)\b/i;
+const REMOTE_LOCATION_RE = /\b(remote|work from home|anywhere)\b/i;
 
 function strings(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim()) : [];
@@ -17,19 +18,20 @@ function queryText(title, remotePreference) {
 export function buildDiscoveryQueryPlan(preferences = {}) {
   const titles = [...new Set([...strings(preferences.target_titles), ...strings(preferences.title_aliases)])].slice(0, 3);
   const locations = strings(preferences.target_locations);
+  const hasRemoteLocation = locations.some((value) => REMOTE_LOCATION_RE.test(value));
   const supportedCountries = [
     { country: 'us', locations: locations.filter((value) => US_LOCATION_RE.test(value)) },
     { country: 'in', locations: locations.filter((value) => INDIA_LOCATION_RE.test(value)) },
   ];
-  const countries = locations.length
+  const countries = locations.length && !hasRemoteLocation
     ? supportedCountries.filter(({ locations: matches }) => matches.length)
     : supportedCountries;
-  const unsupportedLocations = locations.filter((location) => !US_LOCATION_RE.test(location) && !INDIA_LOCATION_RE.test(location));
+  const unsupportedLocations = locations.filter((location) => !US_LOCATION_RE.test(location) && !INDIA_LOCATION_RE.test(location) && !REMOTE_LOCATION_RE.test(location));
   const queries = countries.flatMap(({ country, locations: matchedLocations }) => titles.map((title) => ({
     country,
     title,
     query: queryText(title, preferences.remote_preference),
-    location: matchedLocations[0] || (preferences.remote_preference === 'remote' ? 'Remote' : ''),
+    location: matchedLocations[0] || (preferences.remote_preference === 'remote' || hasRemoteLocation ? 'Remote' : ''),
     salaryMin: Number.isFinite(Number(preferences.salary_min)) ? Number(preferences.salary_min) : undefined,
   })));
   return { queries, unsupportedLocations };

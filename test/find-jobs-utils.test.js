@@ -22,6 +22,13 @@ test('mixed locations search only their supported market and retain a visible no
   assert.deepEqual(plan.unsupportedLocations, ['London']);
 });
 
+test('a remote target searches both supported markets without an unsupported-location error', () => {
+  const plan = buildDiscoveryQueryPlan({ target_titles: ['Product Manager'], target_locations: ['Remote'] });
+  assert.deepEqual(plan.queries.map((query) => query.country), ['us', 'in']);
+  assert.deepEqual(plan.queries.map((query) => query.location), ['Remote', 'Remote']);
+  assert.deepEqual(plan.unsupportedLocations, []);
+});
+
 test('normalizes Adzuna descriptions as snippet-only source evidence', () => {
   const job = normalizeAdzunaJob({ id: 'a-1', title: 'Product Manager', redirect_url: 'https://jobs.example/a', description: 'Short description', company: { display_name: 'Acme' }, location: { display_name: 'Remote' } }, { query: 'Product Manager' });
   assert.equal(job.source, 'adzuna');
