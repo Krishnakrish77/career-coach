@@ -28,6 +28,7 @@ import {
   submitApplicationPacket,
   listJobArtifacts,
   tailorJob,
+  checkJobHealth,
   extractResumeFromPdf,
   saveInterviewStory,
   saveWeeklyPlan,
@@ -55,7 +56,7 @@ test('listJobs requests a light column set, capped, newest first', async () => {
   assert.deepEqual(result, [{ id: '1' }]);
   assert.equal(
     calls[0].url,
-    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,source,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)&order=created_at.desc&limit=100`,
+    `${SUPABASE_URL}/rest/v1/jobs?select=id,url,title,company,source,created_at,capture_quality,posting_status,posting_checked_at,posting_check_reason,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)&order=created_at.desc&limit=100`,
   );
   assert.equal(calls[0].opts.headers.apikey, SUPABASE_ANON_KEY);
   assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');
@@ -187,6 +188,16 @@ test('updateApplicationNotes PATCHes notes and next_follow_up_at', async () => {
   const body = JSON.parse(calls[0].opts.body);
   assert.equal(body.notes, 'follow up');
   assert.equal(body.next_follow_up_at, '2026-08-01T00:00:00.000Z');
+});
+
+test('checkJobHealth calls the authenticated posting-health Edge Function', async () => {
+  const { fetchImpl, calls } = fetchSequence([fakeResponse({ json: { status: 'active', reason: 'The public posting page responded successfully.' } })]);
+  const result = await checkJobHealth('token-1', 'job-1', fetchImpl);
+  assert.equal(calls[0].url, `${SUPABASE_URL}/functions/v1/check-job-health`);
+  assert.equal(calls[0].opts.method, 'POST');
+  assert.equal(calls[0].opts.headers.authorization, 'Bearer token-1');
+  assert.deepEqual(JSON.parse(calls[0].opts.body), { job_id: 'job-1' });
+  assert.equal(result.status, 'active');
 });
 
 test('deleteJob issues a DELETE against the job id', async () => {

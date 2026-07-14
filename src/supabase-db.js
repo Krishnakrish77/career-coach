@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-auth.js';
 import { normalizeUrl, hashContent, computeCaptureQuality } from './job-utils.js';
 
 const JOB_LIST_SELECT =
-  'id,url,title,company,source,created_at,capture_quality,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)';
+  'id,url,title,company,source,created_at,capture_quality,posting_status,posting_checked_at,posting_check_reason,applications(status,next_follow_up_at),job_matches(overall_grade,cv_match_score,recommendation,confidence)';
 
 async function restRequest(path, accessToken, { method = 'GET', body, extraHeaders = {} } = {}, fetchImpl = fetch) {
   const res = await fetchImpl(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -471,6 +471,20 @@ export async function tailorJob(accessToken, jobId, fetchImpl = fetch) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Tailor error ${res.status}`);
+  return data;
+}
+
+// Checks one saved posting on the server. The Edge Function owns URL safety,
+// provider/API selection, and rate limiting; the extension only names a job
+// the signed-in user already has access to.
+export async function checkJobHealth(accessToken, jobId, fetchImpl = fetch) {
+  const res = await fetchImpl(`${SUPABASE_URL}/functions/v1/check-job-health`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ job_id: jobId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Posting health error ${res.status}`);
   return data;
 }
 

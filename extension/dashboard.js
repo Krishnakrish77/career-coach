@@ -27,6 +27,7 @@ import {
   submitApplicationPacket,
   listJobArtifacts,
   tailorJob,
+  checkJobHealth,
   extractResumeFromPdf,
   listInterviewStories,
   saveInterviewStory,
@@ -41,6 +42,7 @@ import {
   listInterviewChecklist, saveInterviewChecklistItem,
 } from '../src/supabase-db.js';
 import { checkResumeHealth } from '../src/job-utils.js';
+import { healthStatusLabel } from '../src/job-health-utils.js';
 import { buildOpportunityScorecard, recommendationLabel } from '../src/opportunity-utils.js';
 import { createPacketDrafts } from '../src/packet-utils.js';
 import { buildDiscoveryRecommendation } from '../src/discovery-utils.js';
@@ -108,6 +110,15 @@ function createQualityPill(quality) {
   pill.className = 'pill';
   pill.dataset.quality = quality;
   pill.textContent = QUALITY_LABELS[quality] || quality;
+  return pill;
+}
+
+function createHealthPill(status) {
+  if (!status || status === 'unverified') return null;
+  const pill = document.createElement('span');
+  pill.className = 'pill';
+  pill.dataset.health = status;
+  pill.textContent = healthStatusLabel(status);
   return pill;
 }
 
@@ -524,6 +535,8 @@ async function renderJobList() {
     if (gradeBadge) top.appendChild(gradeBadge);
     const qualityPill = createQualityPill(job.capture_quality);
     if (qualityPill) top.appendChild(qualityPill);
+    const healthPill = createHealthPill(job.posting_status);
+    if (healthPill) top.appendChild(healthPill);
     top.appendChild(createPill(application.status));
 
     const bottom = document.createElement('div');
@@ -637,6 +650,8 @@ async function renderJobDetail(editing = false) {
   titleWrap.append(h2, meta);
   const qualityPill = createQualityPill(job.capture_quality);
   if (qualityPill) titleWrap.appendChild(qualityPill);
+  const healthPill = createHealthPill(job.posting_status);
+  if (healthPill) titleWrap.appendChild(healthPill);
 
   const statusLabel = document.createElement('label');
   statusLabel.className = 'detail-status-label';
@@ -663,6 +678,11 @@ async function renderJobDetail(editing = false) {
   tailorBtn.type = 'button';
   tailorBtn.textContent = application.tailored_resume ? 'Refresh Tailored Draft' : 'Tailor Resume + Cover Letter';
 
+  const healthBtn = document.createElement('button');
+  healthBtn.type = 'button';
+  healthBtn.className = 'subtle';
+  healthBtn.textContent = 'Check Availability';
+
   const editBtn = document.createElement('button');
   editBtn.type = 'button';
   editBtn.className = 'subtle';
@@ -674,7 +694,7 @@ async function renderJobDetail(editing = false) {
   deleteBtn.type = 'button';
   deleteBtn.textContent = 'Delete';
 
-  actionsRow.append(tailorBtn, editBtn, deleteBtn);
+  actionsRow.append(tailorBtn, healthBtn, editBtn, deleteBtn);
 
   const tailorStatus = document.createElement('div');
   tailorStatus.id = 'detailTailorStatus';
@@ -682,6 +702,38 @@ async function renderJobDetail(editing = false) {
   tailorStatus.setAttribute('aria-live', 'polite');
 
   card.append(header, actionsRow, tailorStatus);
+
+  const healthSection = document.createElement('section');
+  healthSection.className = 'detail-section stack compact';
+  const healthHeader = document.createElement('div');
+  healthHeader.className = 'detail-section-header';
+  const healthTitle = document.createElement('h3');
+  healthTitle.textContent = 'Posting availability';
+  healthHeader.appendChild(healthTitle);
+  const healthCopy = document.createElement('div');
+  healthCopy.className = 'small';
+  const checkedText = formatDateTime(job.posting_checked_at);
+  healthCopy.textContent = job.posting_status && job.posting_status !== 'unverified'
+    ? `${healthStatusLabel(job.posting_status)}${checkedText ? ` · Checked ${checkedText}` : ''}. ${job.posting_check_reason || ''}`
+    : 'Not checked yet. Availability checks are limited and never submit anything.';
+  const healthStatus = document.createElement('div');
+  healthStatus.className = 'status-line';
+  healthStatus.setAttribute('aria-live', 'polite');
+  healthSection.append(healthHeader, healthCopy, healthStatus);
+  card.appendChild(healthSection);
+  healthBtn.addEventListener('click', async () => {
+    healthBtn.disabled = true;
+    setStatusElement(healthStatus, 'Checking the public posting…');
+    try {
+      const result = await checkJobHealth(session.accessToken, job.id);
+      setStatusElement(healthStatus, `${healthStatusLabel(result.status)}. ${result.reason}`, result.status === 'active' ? 'success' : '');
+      await renderJobList();
+      await renderJobDetail(editing);
+    } catch (err) {
+      setStatusElement(healthStatus, `Could not check availability: ${err.message}`, 'error');
+      healthBtn.disabled = false;
+    }
+  });
 
   // RAW-3: edit bad capture fields without losing the original source URL —
   // url itself is never part of this form.
@@ -1168,6 +1220,7 @@ async function renderJobDetail(editing = false) {
   });
 
   tailorBtn.addEventListener('click', async () => {
+    if (job.posting_status === 'likely_expired' && !confirm('This posting appears expired. Generate tailoring material anyway?')) return;
     tailorBtn.disabled = true;
     setStatusElement(tailorStatus, 'Generating...');
     try {
