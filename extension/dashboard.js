@@ -45,6 +45,7 @@ import { buildDiscoveryRecommendation } from '../src/discovery-utils.js';
 import { buildLikelyQuestions, extractStorySeeds, matchStoriesToQuestion, reviewPracticeAnswer } from '../src/interview-utils.js';
 import { buildCoachingPlan, weekStart } from '../src/coaching-utils.js';
 import { createDocx } from '../src/docx-utils.js';
+import { atsStatusLabel, buildAtsSimulation } from '../src/ats-utils.js';
 
 const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 const $ = (id) => document.getElementById(id);
@@ -134,8 +135,125 @@ function createGradeBadge(jobMatch) {
   badge.className = 'badge';
   badge.dataset.grade = jobMatch.overall_grade;
   badge.textContent = jobMatch.overall_grade;
-  badge.title = `ATS match score: ${jobMatch.cv_match_score}/100`;
+  badge.title = `Tailoring match score: ${jobMatch.cv_match_score}/100`;
   return badge;
+}
+
+function createAtsStatusPill(status) {
+  const pill = document.createElement('span');
+  pill.className = 'pill';
+  pill.dataset.atsStatus = status;
+  pill.textContent = atsStatusLabel(status);
+  return pill;
+}
+
+function createAtsMetric(label, value) {
+  const item = document.createElement('div');
+  item.className = 'ats-metric';
+  const score = document.createElement('strong');
+  score.textContent = `${value}/100`;
+  const caption = document.createElement('span');
+  caption.textContent = label;
+  item.append(score, caption);
+  return item;
+}
+
+function labelForGateStatus(status) {
+  return {
+    pass: 'Pass',
+    warn: 'Warn',
+    unknown: 'Check',
+    block: 'Block',
+  }[status] || 'Check';
+}
+
+function renderAtsSimulationSection(simulation) {
+  const section = document.createElement('section');
+  section.className = 'detail-section stack';
+
+  const header = document.createElement('div');
+  header.className = 'detail-section-header';
+  const title = document.createElement('h3');
+  title.textContent = 'ATS Simulation';
+  header.append(title, createAtsStatusPill(simulation.status));
+
+  const summary = document.createElement('div');
+  summary.className = 'small';
+  summary.textContent = `${simulation.overall_score}/100 · ${simulation.confidence} confidence`;
+
+  const metrics = document.createElement('div');
+  metrics.className = 'ats-metrics';
+  metrics.append(
+    createAtsMetric('Resume', simulation.resume_completeness.score),
+    createAtsMetric('Gates', simulation.gate_readiness_score),
+    createAtsMetric('Keywords', simulation.keyword_score),
+    createAtsMetric('Search', simulation.searchability_score),
+  );
+
+  const gates = document.createElement('div');
+  gates.className = 'ats-list';
+  for (const gate of simulation.gates.slice(0, 5)) {
+    const row = document.createElement('div');
+    row.className = 'ats-row';
+    row.dataset.status = gate.status;
+    const status = document.createElement('span');
+    status.className = 'ats-status';
+    status.textContent = labelForGateStatus(gate.status);
+    const copy = document.createElement('div');
+    const label = document.createElement('strong');
+    label.textContent = gate.label;
+    const explanation = document.createElement('span');
+    explanation.textContent = gate.explanation;
+    copy.append(label, explanation);
+    row.append(status, copy);
+    gates.appendChild(row);
+  }
+
+  const evidenceTitle = document.createElement('h3');
+  evidenceTitle.textContent = 'Requirement Evidence';
+  const evidenceList = document.createElement('div');
+  evidenceList.className = 'ats-list';
+  const priorityRank = { required: 0, preferred: 1, keyword: 2 };
+  const evidenceItems = [...simulation.evidence]
+    .sort((a, b) => Number(a.found) - Number(b.found) || priorityRank[a.priority] - priorityRank[b.priority])
+    .slice(0, 8);
+  if (evidenceItems.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'small';
+    empty.textContent = 'No ATS keywords found in the captured job description.';
+    evidenceList.appendChild(empty);
+  } else {
+    for (const item of evidenceItems) {
+      const row = document.createElement('div');
+      row.className = 'ats-row';
+      row.dataset.status = item.found ? 'pass' : item.priority === 'required' ? 'warn' : 'unknown';
+      const status = document.createElement('span');
+      status.className = 'ats-status';
+      status.textContent = item.found ? 'Found' : item.priority === 'required' ? 'Gap' : 'Check';
+      const copy = document.createElement('div');
+      const label = document.createElement('strong');
+      label.textContent = `${item.label} · ${item.priority}`;
+      const explanation = document.createElement('span');
+      explanation.textContent = item.evidence || item.action;
+      copy.append(label, explanation);
+      row.append(status, copy);
+      evidenceList.appendChild(row);
+    }
+  }
+
+  const searchTerms = document.createElement('div');
+  searchTerms.className = 'ats-term-list';
+  for (const item of simulation.recruiter_search_terms) {
+    const term = document.createElement('span');
+    term.className = 'ats-term';
+    term.dataset.found = String(item.found);
+    term.textContent = item.label;
+    searchTerms.appendChild(term);
+  }
+
+  section.append(header, summary, metrics, gates, evidenceTitle, evidenceList);
+  if (simulation.recruiter_search_terms.length) section.appendChild(searchTerms);
+  return section;
 }
 
 function emptyState(text) {
@@ -352,6 +470,21 @@ async function renderJobDetail(editing = false) {
     packet = await getApplicationPacket(session.accessToken, job.id);
   } catch {
     // Packet data is additive; a temporary failure must not hide the job.
+  }
+
+  let latestResume = null;
+  try {
+    latestResume = await getLatestResume(session.accessToken);
+  } catch {
+    // ATS simulation remains visible with a resume-missing blocker.
+  }
+
+  if (!profilePreferences) {
+    try {
+      profilePreferences = (await getProfilePreferences(session.accessToken)) || {};
+    } catch {
+      profilePreferences = {};
+    }
   }
 
   const application = applicationOf(job);
@@ -609,6 +742,13 @@ async function renderJobDetail(editing = false) {
 
   card.appendChild(triageSection);
 
+  const atsSimulation = buildAtsSimulation({
+    job,
+    resumeText: latestResume?.raw_text || '',
+    preferences: profilePreferences || {},
+  });
+  card.appendChild(renderAtsSimulationSection(atsSimulation));
+
   const packetSection = document.createElement('section');
   packetSection.className = 'detail-section stack';
   const packetHeader = document.createElement('div');
@@ -706,7 +846,7 @@ async function renderJobDetail(editing = false) {
     const atsHeader = document.createElement('div');
     atsHeader.className = 'detail-section-header';
     const atsTitle = document.createElement('h3');
-    atsTitle.textContent = 'ATS Match';
+    atsTitle.textContent = 'Tailoring Match';
     atsHeader.appendChild(atsTitle);
     const atsBadge = createGradeBadge(jobMatch);
     if (atsBadge) atsHeader.appendChild(atsBadge);
