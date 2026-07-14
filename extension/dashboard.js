@@ -458,12 +458,21 @@ async function updateOnboardingState(fields) {
   profilePreferences = { ...(profilePreferences || {}), onboarding_state };
 }
 
+// The checklist lives only in Settings now, so hiding it costs no vertical
+// space elsewhere. Dismissal collapses it to a one-line, always-visible
+// "Restart checklist" row instead of removing it from the page entirely.
+function renderOnboardingDismissed() {
+  $('onboardingSteps').replaceChildren();
+  $('startOnboardingTour').hidden = true;
+  $('dismissOnboarding').hidden = true;
+  $('onboardingTourCopy').textContent = 'Checklist dismissed. Use Restart checklist to bring it back.';
+}
+
 async function refreshOnboarding({ advanceTour = false, recommendations: knownRecommendations } = {}) {
-  const panel = $('onboardingPanel');
   // Dismissal is persisted on the cached profile row. Do not spend four more
   // requests after every user action when this user has opted out.
   if (profilePreferences?.onboarding_state?.dismissed) {
-    panel.hidden = true;
+    renderOnboardingDismissed();
     return;
   }
   try {
@@ -472,23 +481,34 @@ async function refreshOnboarding({ advanceTour = false, recommendations: knownRe
       Array.isArray(knownRecommendations) ? Promise.resolve(knownRecommendations) : listDiscoveryRecommendations(session.accessToken),
       listJobs(session.accessToken),
     ]);
+    // The user may have dismissed the checklist while this fetch was in
+    // flight. Merging a response fetched before that would revert it.
+    if (profilePreferences?.onboarding_state?.dismissed) {
+      renderOnboardingDismissed();
+      return;
+    }
     profilePreferences = { ...(profilePreferences || {}), ...(preferences || {}) };
+    if (profilePreferences.onboarding_state?.dismissed) {
+      renderOnboardingDismissed();
+      return;
+    }
     onboardingSteps = buildOnboardingSteps({ preferences: profilePreferences, resume, recommendations, jobs });
     const allComplete = onboardingSteps.every((step) => step.complete);
-    const dismissed = Boolean(profilePreferences.onboarding_state?.dismissed);
-    const forceVisible = Boolean(profilePreferences.onboarding_state?.force_visible);
-    panel.hidden = dismissed || (allComplete && !forceVisible);
-    if (panel.hidden) return;
+    $('startOnboardingTour').hidden = false;
+    $('dismissOnboarding').hidden = false;
     renderOnboardingSteps();
     const next = nextIncompleteOnboardingStep(onboardingSteps) || onboardingSteps[0];
     if (onboardingTourActive || advanceTour) {
       onboardingTourActive = true;
       openOnboardingStep(next);
     } else {
-      $('onboardingTourCopy').textContent = allComplete ? 'All steps are complete. Review any area or use Guide me for a refresher.' : 'Complete these steps in any order, or choose Guide me for contextual help.';
+      const completeCount = onboardingSteps.filter((step) => step.complete).length;
+      $('onboardingTourCopy').textContent = allComplete
+        ? 'All steps are complete. Review any area or use Guide me for a refresher.'
+        : `${completeCount} of ${onboardingSteps.length} steps complete. Complete these steps in any order, or choose Guide me for contextual help.`;
     }
   } catch (err) {
-    panel.hidden = true;
+    $('onboardingTourCopy').textContent = `Could not load checklist: ${err.message}`;
   }
 }
 
@@ -499,22 +519,24 @@ $('startOnboardingTour').addEventListener('click', () => {
 
 $('dismissOnboarding').addEventListener('click', async () => {
   const button = $('dismissOnboarding');
-  const panel = $('onboardingPanel');
   const previousPreferences = profilePreferences;
   const { version: _previousVersion, ...existingState } = profilePreferences?.onboarding_state || {};
   const onboarding_state = { ...existingState, dismissed: true, force_visible: false, version: ONBOARDING_VERSION };
-  // Hide first so the control feels immediate; restore it only if persistence
-  // actually fails. Updating the cached profile also prevents a concurrent
-  // refresh from putting the panel back while the request is in flight.
+  // Collapse first so the control feels immediate; restore it only if
+  // persistence actually fails. Updating the cached profile also prevents a
+  // concurrent refresh from putting the checklist back while the request is
+  // in flight.
   profilePreferences = { ...(profilePreferences || {}), onboarding_state };
   onboardingTourActive = false;
-  panel.hidden = true;
   button.disabled = true;
+  renderOnboardingDismissed();
   try {
     await saveOnboardingState(session.accessToken, onboarding_state);
   } catch (err) {
     profilePreferences = previousPreferences;
-    panel.hidden = false;
+    $('startOnboardingTour').hidden = false;
+    $('dismissOnboarding').hidden = false;
+    renderOnboardingSteps();
     $('onboardingTourCopy').textContent = `Could not dismiss checklist: ${err.message}`;
   } finally {
     button.disabled = false;
@@ -530,8 +552,6 @@ $('restartOnboarding').addEventListener('click', async () => {
     $('onboardingTourCopy').textContent = `Could not restart checklist: ${err.message}`;
   }
 });
-
-$('restartOnboardingFromSettings').addEventListener('click', () => $('restartOnboarding').click());
 
 // ---- Jobs ----
 // Every field below can originate from an arbitrary webpage (job.title/company,
@@ -2077,17 +2097,20 @@ async function init() {
   const linkedJobId = new URLSearchParams(location.search).get('job');
   if (linkedJobId) selectedJobId = linkedJobId;
   await loadPreferences();
-  // Everything below is independent. Loading in parallel prevents the setup
-  // progress from waiting behind job, coach, and interview queries.
+  // renderJobDetail reads selectedJobId, which renderJobList only assigns
+  // once its own fetch resolves — keep these two sequential. Everything else
+  // is independent, so loading it in parallel prevents the setup progress
+  // from waiting behind job, coach, and interview queries.
+  const onboarding = refreshOnboarding();
+  await renderJobList();
   await Promise.all([
-    renderJobList(),
     renderJobDetail(),
     renderDiscovery(),
     loadResume(),
     renderCareerEvidence(),
     loadInterview(),
     renderCoach(),
-    refreshOnboarding(),
+    onboarding,
   ]);
 }
 
